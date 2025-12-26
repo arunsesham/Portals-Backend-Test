@@ -21,7 +21,7 @@ import { handler as reportsHandler } from './backend/lambda_reports.js';
 import { handler as documentsHandler } from './backend/lambda_documents.js';
 
 const app = express();
-process.env.PORT || 3000;
+const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
