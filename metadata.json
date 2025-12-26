@@ -1,0 +1,8 @@
+{
+  "name": "Portals-- DEMO Template 1",
+  "description": "A high-fidelity Employee Portal featuring a Widget-based Dashboard, Interactive Attendance Calendar, and modern UI inspired by top-tier design concepts.",
+  "requestFramePermissions": [
+    "camera",
+    "geolocation"
+  ]
+}
