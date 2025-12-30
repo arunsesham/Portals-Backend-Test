@@ -27,10 +27,10 @@ export const handler = async (event) => {
         }
 
         if (method === 'POST') {
-            const { title, description, type, color, id, created_at} = JSON.parse(event.body);
+            const { title, description, type, color, id, created_at, page} = JSON.parse(event.body);
             const res = await client.query(
-                'INSERT INTO announcements (title, description, type, color, id, created_at) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-                [title, description, type, color, id, created_at]
+                'INSERT INTO announcements (title, description, type, color, id, created_at, page) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+                [title, description, type, color, id, created_at, page]
             );
             console.log(res);
             return createResponse(201, res.rows[0]);
