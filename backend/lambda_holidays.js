@@ -26,26 +26,26 @@ export const handler = async (event) => {
         }
 
         if (method === 'POST') {
-            const { name, date, type, location,id } = JSON.parse(event.body);
+            const { name, date, type, location,id, created_at } = JSON.parse(event.body);
             console.log(JSON.parse(event.body));
             console.log(
-                'INSERT INTO holidays (id, name, date, type, location) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-                [id, name, date, type, location]
+                'INSERT INTO holidays (id, name, date, type, location, created_at) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+                [id, name, date, type, location, created_at]
             );
             const res = await client.query(
-                'INSERT INTO holidays (id, name, date, type, location) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-                [id, name, date, type, location]
+                'INSERT INTO holidays (id, name, date, type, location, created_at) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+                [id, name, date, type, location, created_at]
             );
             
             return createResponse(201, res.rows[0]);
         }
 
         if (method === 'PUT' && id) {
-            const { name, date, type, location } = JSON.parse(event.body);
-            //console.log(JSON.parse(event.body));
+            const { name, date, type, location, updated_at } = JSON.parse(event.body);
+            console.log(JSON.parse(event.body));
             const res = await client.query(
-                'UPDATE holidays SET name=$1, date=$2, type=$3, location=$4 WHERE id=$5 RETURNING *',
-                [name, date, type, location, id]
+                'UPDATE holidays SET name=$1, date=$2, type=$3, location=$4, updated_at=$6 WHERE id=$5 RETURNING *',
+                [name, date, type, location, id, updated_at]
             );
             return createResponse(200, res.rows[0]);
         }

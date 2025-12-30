@@ -65,6 +65,7 @@ export const handler = async (event) => {
 
         if (httpMethod === 'PUT' && empId) {
             const data = JSON.parse(event.body);
+            console.log(JSON.parse(event.body));
             const fields = Object.keys(data).filter(k => k !== 'employee_id');
             const setClause = fields.map((k, i) => `${k} = $${i + 2}`).join(', ');
             const values = fields.map(k => data[k]);

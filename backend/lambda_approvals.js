@@ -150,7 +150,7 @@ export const handler = async (event) => {
 
         if (httpMethod === 'PUT') {
             console.log(JSON.parse(event.body));
-            const { id, status, manager_notes, source } = JSON.parse(event.body);
+            const { id, status, manager_notes, source, updated_at } = JSON.parse(event.body);
             await client.query('BEGIN');
 
             if (source === 'compoff') {
@@ -180,7 +180,7 @@ export const handler = async (event) => {
                         [JSON.stringify([newEntry]), employee_id]
                     );
                 }
-                await client.query('UPDATE attendance SET status = $1 WHERE id = $2', [status, id]);
+                await client.query('UPDATE attendance SET status = $1, updated_at=$3 WHERE id = $2', [status, id, updated_at]);
 
             } else if (source === 'leave') {
                 // --- CASE B: Manager approves/rejects a LEAVE request ---
@@ -213,8 +213,8 @@ export const handler = async (event) => {
                     [leave_balance, JSON.stringify(comp_off), employeeId]
                 );
                 await client.query(
-                    'UPDATE leaves SET status = $1, manager_notes = $2 WHERE id = $3', 
-                    [status, manager_notes, id]
+                    'UPDATE leaves SET status = $1, manager_notes = $2, updated_at = $4 WHERE id = $3', 
+                    [status, manager_notes, id, updated_at]
                 );
             }
 

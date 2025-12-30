@@ -15,7 +15,7 @@ export const handler = async (event) => {
     try {
         client = await pool.connect();
         if (httpMethod === 'POST') {
-            const { id, employee_id, start_date, end_date, type, status, reason, manager_id } = JSON.parse(event.body);
+            const { id, employee_id, start_date, end_date, type, status, reason, manager_id,created_at } = JSON.parse(event.body);
             await client.query('BEGIN');
 
             const empRes = await client.query('SELECT leaves_remaining, comp_off FROM employees WHERE employee_id = $1', [employee_id]);
@@ -42,9 +42,9 @@ export const handler = async (event) => {
                 [leaves_remaining, JSON.stringify(comp_off), employee_id]);
 
             const res = await client.query(
-                `INSERT INTO leaves (id, employee_id, start_date, end_date, type, status, reason, manager_id) 
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-                [id, employee_id, start_date, end_date, type, status, reason, manager_id]
+                `INSERT INTO leaves (id, employee_id, start_date, end_date, type, status, reason, manager_id, created_at) 
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+                [id, employee_id, start_date, end_date, type, status, reason, manager_id, created_at]
             );
 
             await client.query('COMMIT');

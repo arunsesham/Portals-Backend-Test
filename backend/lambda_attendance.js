@@ -16,16 +16,16 @@ export const handler = async (event) => {
 
         if (httpMethod === 'POST') {
             console.log(JSON.parse(event.body));
-            const { id, employee_id, date, status, start_date, end_date, reason,work_mode, manager_id, type, location } = JSON.parse(event.body);
+            const { id, employee_id, date, status, start_date, end_date, reason,work_mode, manager_id, type, location, created_at } = JSON.parse(event.body);
             
             // const check = await client.query('SELECT id FROM attendance WHERE employee_id = $1 AND date = $2', [employee_id, date]);
             // if (check.rows.length > 0) {
             //     return createResponse(409, { message: "Attendance or leave already recorded for this day." });
             // }
 
-            const query = `INSERT INTO attendance (id, date, status,employee_id, start_date, end_date, reason,work_mode, manager_id, type) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`;
-            console.log(query, [id, date, status, employee_id, start_date, end_date, reason,work_mode, manager_id, type]);
-            const res = await client.query(query, [id, date, status, employee_id, start_date, end_date, reason,work_mode, manager_id, type]);
+            const query = `INSERT INTO attendance (id, date, status,employee_id, start_date, end_date, reason,work_mode, manager_id, type, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`;
+            console.log(query, [id, date, status, employee_id, start_date, end_date, reason,work_mode, manager_id, type, created_at]);
+            const res = await client.query(query, [id, date, status, employee_id, start_date, end_date, reason,work_mode, manager_id, type, created_at]);
             return createResponse(201, res.rows[0]);
         }
 
