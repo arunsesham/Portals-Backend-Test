@@ -10,10 +10,16 @@ const createResponse = (statusCode, body) => ({
 export const handler = async (event) => {
     const method = event.httpMethod || event.requestContext?.httpMethod;
     const id = event.pathParameters?.id;
+    const page = event.queryStringParameters?.page
 
     let client;
     try {
         client = await pool.connect();
+
+        if (method === 'GET' && page) {
+            const res = await client.query('SELECT * FROM announcements where page = $1',[page]);
+            return createResponse(200, res.rows);
+        }
 
         if (method === 'GET') {
             const res = await client.query('SELECT * FROM announcements ORDER BY created_at DESC');
@@ -31,10 +37,10 @@ export const handler = async (event) => {
         }
 
         if (method === 'PUT' && id) {
-            const { title, description, type, color } = JSON.parse(event.body);
+            const { title, description, type, color, updated_at } = JSON.parse(event.body);
             const res = await client.query(
-                'UPDATE announcements SET title=$1, description=$2, type=$3, color=$4 WHERE id=$5 RETURNING *',
-                [title, description, type, color, id]
+                'UPDATE announcements SET title=$1, description=$2, type=$3, color=$4, updated_at = $6 WHERE id=$5 RETURNING *',
+                [title, description, type, color, id, updated_at]
             );
             return createResponse(200, res.rows[0]);
         }
