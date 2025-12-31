@@ -96,7 +96,9 @@ export const handler = async (event) => {
                 document_url,
                 created_at,
                 updated_at,
-                is_active
+                is_active,
+                description,
+                created_by
             FROM policies
         `);
 
