@@ -20,6 +20,8 @@ import { handler as configHandler } from './backend/lambda_config.js';
 import { handler as reportsHandler } from './backend/lambda_reports.js';
 import { handler as documentsHandler } from './backend/lambda_documents.js';
 import { handler as dropdownsHandler } from './backend/lambda_dropdowns.js';
+import { handler as dropdownCategoriesHandler } from './backend/lambda_dropdown_categories.js';
+
 
 
 const app = express();
@@ -118,6 +120,24 @@ app.put('/dropdowns/:id', (req, res) =>
 app.delete('/dropdowns/:id', (req, res) =>
     lambdaBridge(dropdownsHandler, req, res)
 );
+
+// Dropdown Categories
+app.get('/dropdown-categories', (req, res) =>
+    lambdaBridge(dropdownCategoriesHandler, req, res)
+);
+
+app.post('/dropdown-categories', (req, res) =>
+    lambdaBridge(dropdownCategoriesHandler, req, res)
+);
+
+app.put('/dropdown-categories/:id', (req, res) =>
+    lambdaBridge(dropdownCategoriesHandler, req, res)
+);
+
+app.delete('/dropdown-categories/:id', (req, res) =>
+    lambdaBridge(dropdownCategoriesHandler, req, res)
+);
+
 
 app.listen(PORT, () => {
     console.log(`🚀 Portals Pro Local Backend running at http://localhost:${PORT}`);

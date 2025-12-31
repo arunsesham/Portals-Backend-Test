@@ -25,7 +25,6 @@ export const handler = async (event) => {
     try {
         client = await pool.connect();
 
-        /* ----------------------- GET ----------------------- */
         if (method === 'GET') {
             if (keyParam) {
                 // GET /dropdowns/:key
@@ -68,8 +67,6 @@ export const handler = async (event) => {
         }
 
         const body = JSON.parse(event.body || '{}');
-
-        /* ----------------------- POST ----------------------- */
         // POST /dropdowns
         if (method === 'POST') {
             const { categoryKey, value, label, sortOrder = 0 } = body;
@@ -113,7 +110,6 @@ export const handler = async (event) => {
             return createResponse(201, { message: 'Dropdown option created' });
         }
 
-        /* ----------------------- PUT ----------------------- */
         // PUT /dropdowns/:id
         if (method === 'PUT') {
             if (!idParam) {
@@ -139,7 +135,6 @@ export const handler = async (event) => {
             return createResponse(200, { message: 'Dropdown option updated' });
         }
 
-        /* ----------------------- DELETE ----------------------- */
         // DELETE /dropdowns/:id (soft delete)
         if (method === 'DELETE') {
             if (!idParam) {
