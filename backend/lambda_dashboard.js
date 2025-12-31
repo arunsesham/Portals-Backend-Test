@@ -53,7 +53,7 @@ export const handler = async (event) => {
 
         // Announcements
         const announcementsRes = await client.query(`
-            SELECT * FROM announcements
+            SELECT * FROM announcements WHERE TYPE <> 'Pages'
             ORDER BY created_at DESC
             LIMIT 5
         `);
