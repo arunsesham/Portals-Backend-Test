@@ -9,6 +9,7 @@ const createResponse = (statusCode, body) => ({
 
 export const handler = async (event) => {
     const method = event.httpMethod || event.requestContext?.httpMethod;
+    const tenantId = '79c00000-0000-0000-0000-000000000001';
 
     let client;
     try {
@@ -16,20 +17,20 @@ export const handler = async (event) => {
 
         if (method === 'GET') {
             const folder = event.queryStringParameters?.folder || 'Company';
-            const res = await client.query('SELECT * FROM documents WHERE folder = $1 ORDER BY created_at DESC', [folder]);
+            const res = await client.query('SELECT * FROM documents WHERE folder = $1 AND tenant_id = $2 AND is_active = TRUE ORDER BY created_at DESC', [folder, tenantId]);
             return createResponse(200, res.rows);
         }
 
         if (method === 'POST') {
             const { name, category, size, folder, employee_id } = JSON.parse(event.body);
-            
+
             // Simulating S3 upload by generating a mock key/url
             const s3_key = `docs/${folder.toLowerCase()}/${Date.now()}_${name}`;
             const url = `https://s3.amazonaws.com/portals-bucket/${s3_key}`;
 
             const res = await client.query(
-                'INSERT INTO documents (name, category, size, folder, s3_url, employee_id) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-                [name, category, size, folder, url, employee_id]
+                'INSERT INTO documents (name, category, size, folder, s3_url, employee_id, tenant_id, is_active) VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE) RETURNING *',
+                [name, category, size, folder, url, employee_id, tenantId]
             );
             return createResponse(201, res.rows[0]);
         }

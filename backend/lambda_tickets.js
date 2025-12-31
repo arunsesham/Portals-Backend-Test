@@ -9,6 +9,7 @@ const createResponse = (statusCode, body) => ({
 
 export const handler = async (event) => {
     const httpMethod = event.httpMethod || event.requestContext?.httpMethod;
+    const tenantId = '79c00000-0000-0000-0000-000000000001';
 
     let client;
     try {
@@ -16,13 +17,13 @@ export const handler = async (event) => {
 
         if (httpMethod === 'POST') {
             const { employee_id, subject, category, description } = JSON.parse(event.body);
-            const query = `INSERT INTO helpdesk_tickets (employee_id, subject, category, description) VALUES ($1, $2, $3, $4) RETURNING *`;
-            const res = await client.query(query, [employee_id, subject, category, description]);
+            const query = `INSERT INTO helpdesk_tickets (employee_id, subject, category, description, tenant_id) VALUES ($1, $2, $3, $4, $5) RETURNING *`;
+            const res = await client.query(query, [employee_id, subject, category, description, tenantId]);
             return createResponse(201, res.rows[0]);
         }
 
         if (httpMethod === 'GET') {
-            const res = await client.query('SELECT * FROM helpdesk_tickets ORDER BY created_at DESC');
+            const res = await client.query('SELECT * FROM helpdesk_tickets WHERE tenant_id = $1 ORDER BY created_at DESC', [tenantId]);
             return createResponse(200, res.rows);
         }
 

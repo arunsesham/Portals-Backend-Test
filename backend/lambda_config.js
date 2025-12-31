@@ -9,27 +9,28 @@ const createResponse = (statusCode, body) => ({
 
 export const handler = async (event) => {
     const method = event.httpMethod || event.requestContext?.httpMethod;
+    const tenantId = '79c00000-0000-0000-0000-000000000001';
 
     let client;
     try {
         client = await pool.connect();
 
         if (method === 'GET') {
-            const res = await client.query('SELECT * FROM system_config LIMIT 1');
+            const res = await client.query('SELECT * FROM system_config WHERE tenant_id = $1 LIMIT 1', [tenantId]);
             return createResponse(200, res.rows[0]);
         }
 
         if (method === 'POST') {
             const { account_id, company_name, logo_url } = JSON.parse(event.body);
-            
+
             // UPSERT logic: Account ID is unchangeable once set
             const res = await client.query(
-                `INSERT INTO system_config (account_id, company_name, logo_url) 
-                 VALUES ($1, $2, $3) 
+                `INSERT INTO system_config (account_id, company_name, logo_url, tenant_id) 
+                 VALUES ($1, $2, $3, $4) 
                  ON CONFLICT (account_id) DO UPDATE 
                  SET company_name = EXCLUDED.company_name, logo_url = EXCLUDED.logo_url 
                  RETURNING *`,
-                [account_id, company_name, logo_url]
+                [account_id, company_name, logo_url, tenantId]
             );
             return createResponse(200, res.rows[0]);
         }

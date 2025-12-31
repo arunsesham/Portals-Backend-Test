@@ -11,6 +11,7 @@ const createResponse = (statusCode, body) => ({
 
 export const handler = async (event) => {
     const emailParam = event.queryStringParameters?.email;
+    const tenantId = '79c00000-0000-0000-0000-000000000001';
     let client;
 
     try {
@@ -30,9 +31,11 @@ export const handler = async (event) => {
                 employee_id
             FROM employees
             WHERE 
-                EXTRACT(MONTH FROM dob::date) = $1
-                OR EXTRACT(MONTH FROM join_date::date) = $1
-        `, [month]);
+                (EXTRACT(MONTH FROM dob::date) = $1
+                OR EXTRACT(MONTH FROM join_date::date) = $1)
+                AND tenant_id = $2
+                AND is_active = TRUE
+        `, [month, tenantId]);
 
         // Leaves in the month
         const leaves = await client.query(`
@@ -47,16 +50,18 @@ export const handler = async (event) => {
             FROM employees e
             JOIN leaves l ON e.employee_id = l.employee_id
             WHERE
-                EXTRACT(MONTH FROM l.start_date::date) = $1
-                OR EXTRACT(MONTH FROM l.end_date::date) = $1
-        `, [month]);
+                (EXTRACT(MONTH FROM l.start_date::date) = $1
+                OR EXTRACT(MONTH FROM l.end_date::date) = $1)
+                AND e.tenant_id = $2
+                AND e.is_active = TRUE
+        `, [month, tenantId]);
 
         // Announcements
         const announcementsRes = await client.query(`
-            SELECT * FROM announcements WHERE TYPE <> 'Pages'
+            SELECT * FROM announcements WHERE TYPE <> 'Pages' AND tenant_id = $1 AND is_active = TRUE
             ORDER BY created_at DESC
             LIMIT 5
-        `);
+        `, [tenantId]);
 
         // User rank
         const userRank = await client.query(`
@@ -69,9 +74,10 @@ export const handler = async (event) => {
                     leaderboard_points,
                     DENSE_RANK() OVER (ORDER BY leaderboard_points DESC) AS rank
                 FROM employees
+                WHERE tenant_id = $1 AND is_active = TRUE
             ) ranked
-            WHERE email = $1
-        `, [emailParam]);
+            WHERE email = $2
+        `, [tenantId, emailParam]);
 
         // Leaderboard
         const leaderboardRes = await client.query(`
@@ -83,9 +89,10 @@ export const handler = async (event) => {
                 leaderboard_points AS points,
                 RANK() OVER (ORDER BY leaderboard_points DESC) AS rank
             FROM employees
+            WHERE tenant_id = $1 AND is_active = TRUE
             ORDER BY leaderboard_points DESC
             LIMIT 10
-        `);
+        `, [tenantId]);
 
         // Policies
         const policies = await client.query(`
@@ -100,7 +107,8 @@ export const handler = async (event) => {
                 description,
                 created_by
             FROM policies
-        `);
+            WHERE tenant_id = $1 AND is_active = TRUE
+        `, [tenantId]);
 
         // Leaves this month
         const leaves_thismonth = await client.query(`
@@ -126,8 +134,9 @@ export const handler = async (event) => {
                 AND l.status = 'Approved'
                 AND l.start_date::date <= m.month_end
                 AND l.end_date::date >= m.month_start
+                AND e.tenant_id = $4
             GROUP BY e.email
-        `, [month, year, emailParam]);
+        `, [month, year, emailParam, tenantId]);
 
         // Activity Pulse (static)
         const activityGraph = [

@@ -27,7 +27,7 @@ export const handler = async (event) => {
                 `
                 SELECT id, key, is_active
                 FROM dropdown_categories
-                WHERE tenant_id = $1
+                WHERE tenant_id = $1 AND is_active = TRUE
                 ORDER BY key
                 `,
                 [tenantId]
@@ -41,7 +41,7 @@ export const handler = async (event) => {
         /* ----------------------- POST ----------------------- */
         // POST /dropdown-categories
         if (method === 'POST') {
-            const { key } = body;
+            const { key, created_at, updated_at } = body;
 
             if (!key) {
                 return createResponse(400, { message: 'Category key is required' });
@@ -66,16 +66,20 @@ export const handler = async (event) => {
                     id,
                     key,
                     tenant_id,
-                    is_active
+                    is_active,
+                    created_at,
+                    updated_at
                 )
                 VALUES (
                     gen_random_uuid(),
                     $1,
                     $2,
-                    TRUE
+                    TRUE,
+                    $3,
+                    $3
                 )
                 `,
-                [key, tenantId]
+                [key, tenantId, created_at]
             );
 
             return createResponse(201, { message: 'Dropdown category created' });
@@ -88,7 +92,7 @@ export const handler = async (event) => {
                 return createResponse(400, { message: 'Category ID missing' });
             }
 
-            const { key, is_active } = body;
+            const { key, is_active, updated_at } = body;
 
             await client.query(
                 `
@@ -96,10 +100,10 @@ export const handler = async (event) => {
                 SET
                     key = COALESCE($1, key),
                     is_active = COALESCE($2, is_active),
-                    updated_at = NOW()
-                WHERE id = $3
+                    updated_at = $4
+                WHERE id = $3 AND tenant_id = $5
                 `,
-                [key, is_active, idParam]
+                [key, is_active, idParam, updated_at, tenantId]
             );
 
             return createResponse(200, { message: 'Dropdown category updated' });
@@ -112,14 +116,16 @@ export const handler = async (event) => {
                 return createResponse(400, { message: 'Category ID missing' });
             }
 
+            const { updated_at } = body;
+
             await client.query(
                 `
                 UPDATE dropdown_categories
                 SET is_active = FALSE,
-                    updated_at = NOW()
-                WHERE id = $1
+                    updated_at = $2
+                WHERE id = $1 AND tenant_id = $3
                 `,
-                [idParam]
+                [idParam, updated_at, tenantId]
             );
 
             return createResponse(200, { message: 'Dropdown category deleted' });

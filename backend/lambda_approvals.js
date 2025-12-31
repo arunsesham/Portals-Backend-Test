@@ -12,6 +12,7 @@ export const handler = async (event) => {
     const managerId = event.pathParameters?.managerId;
     const status = event.queryStringParameters?.status;
 
+    const tenantId = '79c00000-0000-0000-0000-000000000001';
     if (!managerId) return createResponse(400, { message: "Manager ID required" });
 
     let client;
@@ -46,6 +47,7 @@ export const handler = async (event) => {
                 FROM leaves
                 WHERE status <> 'Pending'
                 AND manager_id = $1
+                AND tenant_id = $2
                 UNION ALL
                 SELECT 
                     id,
@@ -60,6 +62,7 @@ export const handler = async (event) => {
                 WHERE status <> 'Pending'
                 AND type = 'compoff'
                 AND manager_id = $1
+                AND tenant_id = $2
                 UNION ALL
                 SELECT 
                     id,
@@ -74,12 +77,13 @@ export const handler = async (event) => {
                 WHERE status <> 'Pending'
                 AND type = 'general attendance'
                 AND manager_id = $1
+                AND tenant_id = $2
             ) r
             JOIN employees e
             ON e.employee_id = r.employee_id
             ORDER BY r.start_date DESC
             `;
-            const res = await client.query(query, [managerId]);
+            const res = await client.query(query, [managerId, tenantId]);
             return createResponse(200, res.rows);
         }
 
@@ -111,6 +115,7 @@ export const handler = async (event) => {
                 FROM leaves
                 WHERE status = 'Pending'
                 AND manager_id = $1
+                AND tenant_id = $2
                 UNION ALL
                 SELECT 
                     id,
@@ -125,6 +130,7 @@ export const handler = async (event) => {
                 WHERE status = 'Pending'
                 AND type = 'compoff'
                 AND manager_id = $1
+                AND tenant_id = $2
                 UNION ALL
                 SELECT 
                     id,
@@ -139,12 +145,13 @@ export const handler = async (event) => {
                 WHERE status = 'Pending'
                 AND type = 'general attendance'
                 AND manager_id = $1
+                AND tenant_id = $2
             ) r
             JOIN employees e
             ON e.employee_id = r.employee_id
             ORDER BY r.start_date DESC
             `;
-            const res = await client.query(query, [managerId]);
+            const res = await client.query(query, [managerId, tenantId]);
             return createResponse(200, res.rows);
         }
 
@@ -155,7 +162,7 @@ export const handler = async (event) => {
 
             if (source === 'compoff') {
                 // --- CASE A: Manager approves weekend work to EARN a comp-off ---
-                const attRes = await client.query('SELECT employee_id, date FROM attendance WHERE id = $1', [id]);
+                const attRes = await client.query('SELECT employee_id, date FROM attendance WHERE id = $1 AND tenant_id = $2', [id, tenantId]);
                 if (attRes.rows.length === 0) throw new Error("Attendance record not found");
                 const { employee_id, date } = attRes.rows[0];
 
@@ -180,15 +187,15 @@ export const handler = async (event) => {
                         [JSON.stringify([newEntry]), employee_id]
                     );
                 }
-                await client.query('UPDATE attendance SET status = $1, updated_at=$3 WHERE id = $2', [status, id, updated_at]);
+                await client.query('UPDATE attendance SET status = $1, updated_at=$3 WHERE id = $2 AND tenant_id = $4', [status, id, updated_at, tenantId]);
 
             } else if (source === 'leave') {
                 // --- CASE B: Manager approves/rejects a LEAVE request ---
-                const leaveRes = await client.query('SELECT employee_id FROM leaves WHERE id = $1', [id]);
+                const leaveRes = await client.query('SELECT employee_id FROM leaves WHERE id = $1 AND tenant_id = $2', [id, tenantId]);
                 if (leaveRes.rows.length === 0) throw new Error("Leave record not found");
                 const employeeId = leaveRes.rows[0].employee_id;
 
-                const empData = await client.query('SELECT leave_balance, comp_off FROM employees WHERE employee_id = $1', [employeeId]);
+                const empData = await client.query('SELECT leave_balance, comp_off FROM employees WHERE employee_id = $1 AND tenant_id = $2', [employeeId, tenantId]);
                 let { leave_balance, comp_off } = empData.rows[0];
                 comp_off = comp_off || [];
 
@@ -209,12 +216,12 @@ export const handler = async (event) => {
                 }
 
                 await client.query(
-                    'UPDATE employees SET leave_balance = $1, comp_off = $2 WHERE employee_id = $3',
-                    [leave_balance, JSON.stringify(comp_off), employeeId]
+                    'UPDATE employees SET leave_balance = $1, comp_off = $2 WHERE employee_id = $3 AND tenant_id = $4',
+                    [leave_balance, JSON.stringify(comp_off), employeeId, tenantId]
                 );
                 await client.query(
-                    'UPDATE leaves SET status = $1, manager_notes = $2, updated_at = $4 WHERE id = $3', 
-                    [status, manager_notes, id, updated_at]
+                    'UPDATE leaves SET status = $1, manager_notes = $2, updated_at = $4 WHERE id = $3 AND tenant_id = $5',
+                    [status, manager_notes, id, updated_at, tenantId]
                 );
             }
 

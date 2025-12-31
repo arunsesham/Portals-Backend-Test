@@ -69,7 +69,7 @@ export const handler = async (event) => {
         const body = JSON.parse(event.body || '{}');
         // POST /dropdowns
         if (method === 'POST') {
-            const { categoryKey, value, label, sortOrder = 0 } = body;
+            const { categoryKey, value, label, sortOrder = 0, created_at } = body;
 
             if (!categoryKey || !value || !label) {
                 return createResponse(400, { message: 'Missing fields' });
@@ -94,17 +94,21 @@ export const handler = async (event) => {
                     category_id,
                     value,
                     label,
-                    sort_order
+                    sort_order,
+                    created_at,
+                    updated_at
                 )
                 VALUES (
                     gen_random_uuid(),
                     $1,
                     $2,
                     $3,
-                    $4
+                    $4,
+                    $5,
+                    $5
                 )
                 `,
-                [category.rows[0].id, value, label, sortOrder]
+                [category.rows[0].id, value, label, sortOrder, created_at]
             );
 
             return createResponse(201, { message: 'Dropdown option created' });
@@ -116,7 +120,7 @@ export const handler = async (event) => {
                 return createResponse(400, { message: 'Option ID missing' });
             }
 
-            const { value, label, sortOrder, is_active } = body;
+            const { value, label, sortOrder, is_active, updated_at } = body;
 
             await client.query(
                 `
@@ -126,10 +130,10 @@ export const handler = async (event) => {
                     label = COALESCE($2, label),
                     sort_order = COALESCE($3, sort_order),
                     is_active = COALESCE($4, is_active),
-                    updated_at = NOW()
-                WHERE id = $5
+                    updated_at = $5
+                WHERE id = $6 AND tenant_id = $7
                 `,
-                [value, label, sortOrder, is_active, idParam]
+                [value, label, sortOrder, is_active, updated_at, idParam, tenantId]
             );
 
             return createResponse(200, { message: 'Dropdown option updated' });
@@ -140,15 +144,16 @@ export const handler = async (event) => {
             if (!idParam) {
                 return createResponse(400, { message: 'Option ID missing' });
             }
+            const { updated_at } = body;
 
             await client.query(
                 `
                 UPDATE dropdown_options
                 SET is_active = FALSE,
-                    updated_at = NOW()
-                WHERE id = $1
+                    updated_at = $2
+                WHERE id = $1 AND tenant_id = $3
                 `,
-                [idParam]
+                [idParam, updated_at, tenantId]
             );
 
             return createResponse(200, { message: 'Dropdown option deleted' });

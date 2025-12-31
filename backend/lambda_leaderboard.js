@@ -11,6 +11,7 @@ export const handler = async (event) => {
     let client;
     try {
         client = await pool.connect();
+        const tenantId = '79c00000-0000-0000-0000-000000000001';
         const { employee_id, points, action_by_role } = JSON.parse(event.body);
 
         if (action_by_role !== 'Admin' && action_by_role !== 'HR') {
@@ -18,8 +19,8 @@ export const handler = async (event) => {
         }
 
         const res = await client.query(
-            'UPDATE employees SET leaderboard_points = $1 WHERE employee_id = $2 RETURNING *',
-            [points, employee_id]
+            'UPDATE employees SET leaderboard_points = $1 WHERE employee_id = $2 AND tenant_id = $3 RETURNING *',
+            [points, employee_id, tenantId]
         );
 
         return createResponse(200, res.rows[0]);

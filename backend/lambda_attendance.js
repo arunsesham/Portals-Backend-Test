@@ -9,6 +9,7 @@ const createResponse = (statusCode, body) => ({
 
 export const handler = async (event) => {
     const httpMethod = event.httpMethod || event.requestContext?.httpMethod;
+    const tenantId = '79c00000-0000-0000-0000-000000000001';
 
     let client;
     try {
@@ -16,22 +17,22 @@ export const handler = async (event) => {
 
         if (httpMethod === 'POST') {
             console.log(JSON.parse(event.body));
-            const { id, employee_id, date, status, start_date, end_date, reason,work_mode, manager_id, type, location, created_at } = JSON.parse(event.body);
-            
+            const { id, employee_id, date, status, start_date, end_date, reason, work_mode, manager_id, type, location, created_at } = JSON.parse(event.body);
+
             // const check = await client.query('SELECT id FROM attendance WHERE employee_id = $1 AND date = $2', [employee_id, date]);
             // if (check.rows.length > 0) {
             //     return createResponse(409, { message: "Attendance or leave already recorded for this day." });
             // }
 
-            const query = `INSERT INTO attendance (id, date, status,employee_id, start_date, end_date, reason,work_mode, manager_id, type, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`;
-            console.log(query, [id, date, status, employee_id, start_date, end_date, reason,work_mode, manager_id, type, created_at]);
-            const res = await client.query(query, [id, date, status, employee_id, start_date, end_date, reason,work_mode, manager_id, type, created_at]);
+            const query = `INSERT INTO attendance (id, date, status,employee_id, start_date, end_date, reason,work_mode, manager_id, type, created_at, tenant_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`;
+            console.log(query, [id, date, status, employee_id, start_date, end_date, reason, work_mode, manager_id, type, created_at, tenantId]);
+            const res = await client.query(query, [id, date, status, employee_id, start_date, end_date, reason, work_mode, manager_id, type, created_at, tenantId]);
             return createResponse(201, res.rows[0]);
         }
 
         if (httpMethod === 'GET') {
             const empId = event.queryStringParameters?.employee_id;
-            const res = await client.query('SELECT * FROM attendance WHERE employee_id = $1 ORDER BY date DESC', [empId]);
+            const res = await client.query('SELECT * FROM attendance WHERE employee_id = $1 AND tenant_id = $2 ORDER BY date DESC', [empId, tenantId]);
             return createResponse(200, res.rows);
         }
 

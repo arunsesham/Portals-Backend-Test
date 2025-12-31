@@ -9,6 +9,7 @@ const createResponse = (statusCode, body) => ({
 
 export const handler = async (event) => {
     const method = event.httpMethod || event.requestContext?.httpMethod;
+    const tenantId = '79c00000-0000-0000-0000-000000000001';
 
     let client;
     try {
@@ -17,8 +18,8 @@ export const handler = async (event) => {
         if (method === 'POST') {
             const { candidate_name, email, job_id, referred_by, resume_url } = JSON.parse(event.body);
             const res = await client.query(
-                'INSERT INTO referrals (candidate_name, email, job_id, referred_by, resume_url) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-                [candidate_name, email, job_id, referred_by, resume_url]
+                'INSERT INTO referrals (candidate_name, email, job_id, referred_by, resume_url, tenant_id) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+                [candidate_name, email, job_id, referred_by, resume_url, tenantId]
             );
             return createResponse(201, res.rows[0]);
         }
@@ -29,9 +30,9 @@ export const handler = async (event) => {
                 SELECT r.*, j.title as job_title 
                 FROM referrals r 
                 JOIN job_postings j ON r.job_id = j.id 
-                WHERE r.referred_by = $1 
+                WHERE r.referred_by = $1 AND r.tenant_id = $2
                 ORDER BY r.created_at DESC
-            `, [userId]);
+            `, [userId, tenantId]);
             return createResponse(200, res.rows);
         }
 

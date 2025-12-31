@@ -11,26 +11,28 @@ export const handler = async (event) => {
     const method = event.httpMethod || event.requestContext?.httpMethod;
     const id = event.pathParameters?.id;
     const page = event.queryStringParameters?.page
+    const tenantId = '79c00000-0000-0000-0000-000000000001';
 
     let client;
     try {
         client = await pool.connect();
 
         if (method === 'GET' && page) {
-            const res = await client.query('SELECT * FROM announcements where page = $1',[page]);
+            const res = await client.query('SELECT * FROM announcements where page = $1 AND tenant_id = $2 AND is_active = TRUE', [page, tenantId]);
             return createResponse(200, res.rows);
         }
 
         if (method === 'GET') {
-            const res = await client.query('SELECT * FROM announcements ORDER BY created_at DESC');
+            const res = await client.query('SELECT * FROM announcements WHERE tenant_id = $1 AND is_active = TRUE ORDER BY created_at DESC', [tenantId]);
             return createResponse(200, res.rows);
         }
 
         if (method === 'POST') {
-            const { title, description, type, color, id, created_at, page} = JSON.parse(event.body);
+            const { title, description, type, color, id, created_at, page, is_active } = JSON.parse(event.body);
+            const activeStatus = is_active !== undefined ? is_active : true;
             const res = await client.query(
-                'INSERT INTO announcements (title, description, type, color, id, created_at, page) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
-                [title, description, type, color, id, created_at, page]
+                'INSERT INTO announcements (title, description, type, color, id, created_at, page, tenant_id, is_active) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *',
+                [title, description, type, color, id, created_at, page, tenantId, activeStatus]
             );
             console.log(res);
             return createResponse(201, res.rows[0]);
@@ -39,14 +41,15 @@ export const handler = async (event) => {
         if (method === 'PUT' && id) {
             const { title, description, type, color, updated_at } = JSON.parse(event.body);
             const res = await client.query(
-                'UPDATE announcements SET title=$1, description=$2, type=$3, color=$4, updated_at = $6 WHERE id=$5 RETURNING *',
-                [title, description, type, color, id, updated_at]
+                'UPDATE announcements SET title=$1, description=$2, type=$3, color=$4, updated_at = $5 WHERE id=$6 AND tenant_id=$7 RETURNING *',
+                [title, description, type, color, updated_at, id, tenantId]
             );
             return createResponse(200, res.rows[0]);
         }
 
         if (method === 'DELETE' && id) {
-            await client.query('DELETE FROM announcements WHERE id=$1', [id]);
+            const { updated_at } = JSON.parse(event.body || '{}');
+            await client.query('UPDATE announcements SET is_active = FALSE, updated_at = $2 WHERE id=$1 AND tenant_id=$3', [id, updated_at, tenantId]);
             return createResponse(200, { success: true });
         }
 

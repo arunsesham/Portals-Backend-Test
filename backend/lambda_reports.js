@@ -9,6 +9,7 @@ const createResponse = (statusCode, body) => ({
 
 export const handler = async (event) => {
     const method = event.httpMethod || event.requestContext?.httpMethod;
+    const tenantId = '79c00000-0000-0000-0000-000000000001';
 
     let client;
     try {
@@ -16,14 +17,14 @@ export const handler = async (event) => {
 
         if (method === 'POST') {
             const { reportType, fromDate, toDate, employeeId } = JSON.parse(event.body);
-            
+
             let query = "";
             let params = [fromDate, toDate];
-            
+
             if (reportType === 'Attendance') {
-                query = `SELECT a.*, e.name FROM attendance a JOIN employees e ON a.employee_id = e.employee_id WHERE a.date >= $1 AND a.date <= $2`;
+                query = `SELECT a.*, e.name FROM attendance a JOIN employees e ON a.employee_id = e.employee_id WHERE a.date >= $1 AND a.date <= $2 AND a.tenant_id = '${tenantId}'`;
             } else {
-                query = `SELECT l.*, e.name FROM leaves l JOIN employees e ON l.employee_id = e.employee_id WHERE l.start_date >= $1 AND l.start_date <= $2`;
+                query = `SELECT l.*, e.name FROM leaves l JOIN employees e ON l.employee_id = e.employee_id WHERE l.start_date >= $1 AND l.start_date <= $2 AND l.tenant_id = '${tenantId}'`;
             }
 
             if (employeeId && employeeId !== 'All Employees') {
@@ -32,7 +33,7 @@ export const handler = async (event) => {
             }
 
             const res = await client.query(query, params);
-            
+
             // In a real app, we would use a library like 'csv-writer' or 'pdfkit' here.
             // For now, we return the data summary and a mock download URI.
             return createResponse(200, {
