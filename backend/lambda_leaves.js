@@ -19,9 +19,30 @@ export const handler = async (event) => {
             const { id, employee_id, start_date, end_date, type, status, reason, manager_id, created_at } = JSON.parse(event.body);
             await client.query('BEGIN');
 
-            const empRes = await client.query('SELECT leaves_remaining, comp_off FROM employees WHERE employee_id = $1 AND tenant_id = $2', [employee_id, tenantId]);
-            let { leaves_remaining, comp_off } = empRes.rows[0];
+            const empRes = await client.query('SELECT leaves_remaining, comp_off, location FROM employees WHERE employee_id = $1 AND tenant_id = $2', [employee_id, tenantId]);
+            let { leaves_remaining, comp_off, location } = empRes.rows[0];
             comp_off = comp_off || [];
+
+            // Calculate Total Days excluding Holidays
+            const start = new Date(start_date);
+            const end = new Date(end_date);
+            let total_days = 0;
+
+            // Fetch holidays for the tenant and employee location between start and end date
+            const holidaysRes = await client.query(
+                'SELECT date FROM holidays WHERE tenant_id = $1 AND location = $2 AND is_active = TRUE AND date >= $3 AND date <= $4',
+                [tenantId, location, start_date, end_date]
+            );
+            const holidayDates = new Set(holidaysRes.rows.map(h => h.date));
+
+            // Iterate through dates to count working days
+            for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                const dateStr = d.toISOString().split('T')[0];
+                // You might want to exclude weekends here if required, but user only mentioned holidays.
+                if (!holidayDates.has(dateStr)) {
+                    total_days++;
+                }
+            }
 
             // Find an available Comp-Off that is valid for this leave's start_date
             // Rule: valid_from <= leave_date <= expiry_date
@@ -36,16 +57,16 @@ export const handler = async (event) => {
                 availableComp.status = 'pending';
                 availableComp.leave_id = id;
             } else {
-                leaves_remaining = (leaves_remaining || 0) - 1;
+                leaves_remaining = (leaves_remaining || 0) - total_days;
             }
 
             await client.query('UPDATE employees SET leaves_remaining = $1, comp_off = $2 WHERE employee_id = $3 AND tenant_id = $4',
                 [leaves_remaining, JSON.stringify(comp_off), employee_id, tenantId]);
 
             const res = await client.query(
-                `INSERT INTO leaves (id, employee_id, start_date, end_date, type, status, reason, manager_id, created_at, tenant_id) 
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
-                [id, employee_id, start_date, end_date, type, status, reason, manager_id, created_at, tenantId]
+                `INSERT INTO leaves (id, employee_id, start_date, end_date, type, status, reason, manager_id, created_at, tenant_id, total_days) 
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
+                [id, employee_id, start_date, end_date, type, status, reason, manager_id, created_at, tenantId, total_days]
             );
 
             await client.query('COMMIT');
