@@ -33,7 +33,9 @@ export const handler = async (event) => {
                 r.type,
                 r.status,
                 r.source,
-                r.reason
+                r.reason,
+                r.total_days,
+                r.created_at
             FROM (
                 SELECT 
                     id,
@@ -43,7 +45,9 @@ export const handler = async (event) => {
                     type,
                     status,
                     'leave' AS source,
-                    reason
+                    reason,
+                    total_days,
+                    created_at
                 FROM leaves
                 WHERE status <> 'Pending'
                 AND manager_id = $1
@@ -57,7 +61,9 @@ export const handler = async (event) => {
                     type,
                     status,
                     'compoff' AS source,
-                    reason
+                    reason,
+                    NULL as total_days,
+                    created_at
                 FROM attendance
                 WHERE status <> 'Pending'
                 AND type = 'compoff'
@@ -72,7 +78,9 @@ export const handler = async (event) => {
                     type,
                     status,
                     'attendance' AS source,
-                    reason
+                    reason,
+                    total_days,
+                    created_at
                 FROM attendance
                 WHERE status <> 'Pending'
                 AND type = 'general attendance'
@@ -101,7 +109,9 @@ export const handler = async (event) => {
                 r.type,
                 r.status,
                 r.source,
-                r.reason
+                r.reason,
+                r.total_days,
+                r.created_at
             FROM (
                 SELECT 
                     id,
@@ -111,7 +121,9 @@ export const handler = async (event) => {
                     type,
                     status,
                     'leave' AS source,
-                    reason
+                    reason,
+                    total_days,
+                    created_at
                 FROM leaves
                 WHERE status = 'Pending'
                 AND manager_id = $1
@@ -125,7 +137,9 @@ export const handler = async (event) => {
                     type,
                     status,
                     'compoff' AS source,
-                    reason
+                    reason,
+                    NULL AS total_days,
+                    created_at
                 FROM attendance
                 WHERE status = 'Pending'
                 AND type = 'compoff'
@@ -140,7 +154,9 @@ export const handler = async (event) => {
                     type,
                     status,
                     'attendance' AS source,
-                    reason
+                    reason,
+                    total_days,
+                    created_at
                 FROM attendance
                 WHERE status = 'Pending'
                 AND type = 'general attendance'
