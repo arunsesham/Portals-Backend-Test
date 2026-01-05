@@ -37,7 +37,8 @@ const lambdaBridge = async (handler, req, res) => {
         body: JSON.stringify(req.body),
         pathParameters: req.params,
         queryStringParameters: req.query,
-        requestContext: { httpMethod: req.method }
+        path: req.path,
+        requestContext: { httpMethod: req.method, path: req.path }
     };
 
     try {
