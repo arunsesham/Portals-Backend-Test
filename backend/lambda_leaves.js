@@ -78,6 +78,32 @@ export const handler = async (event) => {
         }
 
         if (httpMethod === 'GET' && empId) {
+            const page = event.queryStringParameters?.page;
+            const limit = event.queryStringParameters?.limit;
+
+            if (page && limit) {
+                const pageNum = parseInt(page);
+                const limitNum = parseInt(limit);
+                const offset = (pageNum - 1) * limitNum;
+
+                const countRes = await client.query('SELECT COUNT(*) FROM leaves WHERE employee_id = $1 AND tenant_id = $2', [empId, tenantId]);
+                const total = parseInt(countRes.rows[0].count);
+                const totalPages = Math.ceil(total / limitNum);
+
+                const res = await client.query('SELECT * FROM leaves WHERE employee_id = $1 AND tenant_id = $2 ORDER BY start_date DESC LIMIT $3 OFFSET $4', [empId, tenantId, limitNum, offset]);
+
+                return createResponse(200, {
+                    data: res.rows,
+                    meta: {
+                        total,
+                        page: pageNum,
+                        limit: limitNum,
+                        totalPages
+                    }
+                });
+            }
+
+            // Default (Legacy)
             const res = await client.query('SELECT * FROM leaves WHERE employee_id = $1 AND tenant_id = $2 ORDER BY start_date DESC', [empId, tenantId]);
             return createResponse(200, res.rows);
         }

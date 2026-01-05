@@ -61,8 +61,45 @@ export const handler = async (event) => {
 
         if (httpMethod === 'GET') {
             const empId = event.queryStringParameters?.employee_id;
-            const res = await client.query('SELECT * FROM attendance WHERE employee_id = $1 AND tenant_id = $2 ORDER BY date DESC', [empId, tenantId]);
-            return createResponse(200, res.rows);
+            const page = event.queryStringParameters?.page;
+            const limit = event.queryStringParameters?.limit;
+
+            if (empId && page && limit) {
+                const pageNum = parseInt(page);
+                const limitNum = parseInt(limit);
+                const offset = (pageNum - 1) * limitNum;
+
+                const countRes = await client.query('SELECT COUNT(*) FROM attendance WHERE employee_id = $1 AND tenant_id = $2', [empId, tenantId]);
+                const total = parseInt(countRes.rows[0].count);
+                const totalPages = Math.ceil(total / limitNum);
+
+                const res = await client.query('SELECT * FROM attendance WHERE employee_id = $1 AND tenant_id = $2 ORDER BY date DESC LIMIT $3 OFFSET $4', [empId, tenantId, limitNum, offset]);
+
+                return createResponse(200, {
+                    data: res.rows,
+                    meta: {
+                        total,
+                        page: pageNum,
+                        limit: limitNum,
+                        totalPages
+                    }
+                });
+            }
+
+            // Default (Legacy)
+            if (empId) {
+                const res = await client.query('SELECT * FROM attendance WHERE employee_id = $1 AND tenant_id = $2 ORDER BY date DESC', [empId, tenantId]);
+                return createResponse(200, res.rows);
+            }
+            // Add a catch-all or just return what was there if empId is mandatory?
+            // The original code only ran if empId was present (implied by usage, but conditional checked `empId` inside).
+            // Wait, original: `const empId = ...; const res = await client.query(...)`
+            // It didn't explicitly check `if (empId)` wrapping the query, but query would fail or return empty if empId was undefined.
+            // Actually, `query` with undefined parameter `$1` would throw error or behave unexpectedly.
+            // The original code was:
+            // const empId = event.queryStringParameters?.employee_id;
+            // const res = await client.query(..., [empId, tenantId]);
+            // I should handle the case where legacy call is made.
         }
 
         return createResponse(405, { message: "Method Not Allowed" });

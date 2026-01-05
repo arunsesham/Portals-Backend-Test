@@ -70,6 +70,45 @@ export const handler = async (event) => {
                 return createResponse(200, emp);
             }
 
+            // LIST EMPLOYEES
+            const page = event.queryStringParameters?.page;
+            const limit = event.queryStringParameters?.limit;
+
+            if (page && limit) {
+                const pageNum = parseInt(page);
+                const limitNum = parseInt(limit);
+                const offset = (pageNum - 1) * limitNum;
+
+                // Get total count
+                const countRes = await client.query('SELECT COUNT(*) FROM employees WHERE tenant_id = $1 AND is_active = TRUE', [tenantId]);
+                const total = parseInt(countRes.rows[0].count);
+                const totalPages = Math.ceil(total / limitNum);
+
+                // Get paginated data
+                const res = await client.query('SELECT * FROM employees WHERE tenant_id = $1 AND is_active = TRUE ORDER BY name ASC LIMIT $2 OFFSET $3', [tenantId, limitNum, offset]);
+                const employees = res.rows;
+
+                for (const emp of employees) {
+                    if (emp.avatar_key) {
+                        const command = new GetObjectCommand({ Bucket: BUCKET_NAME, Key: emp.avatar_key });
+                        emp.avatar_url = await getSignedUrl(s3Client, command, { expiresIn: 43200 });
+                    } else {
+                        emp.avatar_url = null;
+                    }
+                }
+
+                return createResponse(200, {
+                    data: employees,
+                    meta: {
+                        total,
+                        page: pageNum,
+                        limit: limitNum,
+                        totalPages
+                    }
+                });
+            }
+
+            // Default (Legacy): Return all
             const res = await client.query('SELECT * FROM employees WHERE tenant_id = $1 AND is_active = TRUE ORDER BY name ASC', [tenantId]);
             const employees = res.rows;
 

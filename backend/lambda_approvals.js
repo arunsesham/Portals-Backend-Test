@@ -20,77 +20,82 @@ export const handler = async (event) => {
         client = await pool.connect();
 
         if (httpMethod === 'GET' && status) {
-            // Fetch items only for direct reports
-            // Segregate: 'leave' = applying for leave, 'compoff_earning' = weekend work approval
-            const query = `SELECT
-                r.id,
-                r.employee_id,
-                e.name AS employee_name,
-                e.role,
-                e.avatar_url,
-                r.start_date,
-                r.end_date,
-                r.type,
-                r.status,
-                r.source,
-                r.reason,
-                r.total_days,
-                r.created_at
-            FROM (
-                SELECT 
-                    id,
-                    employee_id,
-                    start_date,
-                    end_date,
-                    type,
-                    status,
-                    'leave' AS source,
-                    reason,
-                    total_days,
-                    created_at
-                FROM leaves
-                WHERE status <> 'Pending'
-                AND manager_id = $1
-                AND tenant_id = $2
-                UNION ALL
-                SELECT 
-                    id,
-                    employee_id,
-                    start_date,
-                    end_date,
-                    type,
-                    status,
-                    'compoff' AS source,
-                    reason,
-                    NULL as total_days,
-                    created_at
-                FROM attendance
-                WHERE status <> 'Pending'
-                AND type = 'compoff'
-                AND manager_id = $1
-                AND tenant_id = $2
-                UNION ALL
-                SELECT 
-                    id,
-                    employee_id,
-                    start_date,
-                    end_date,
-                    type,
-                    status,
-                    'attendance' AS source,
-                    reason,
-                    total_days,
-                    created_at
-                FROM attendance
-                WHERE status <> 'Pending'
-                AND type = 'general attendance'
-                AND manager_id = $1
-                AND tenant_id = $2
-            ) r
-            JOIN employees e
-            ON e.employee_id = r.employee_id
-            ORDER BY r.start_date DESC
+            const page = event.queryStringParameters?.page;
+            const limit = event.queryStringParameters?.limit;
+
+            const baseQuery = `
+                SELECT
+                    r.id,
+                    r.employee_id,
+                    e.name AS employee_name,
+                    e.role,
+                    e.avatar_url,
+                    r.start_date,
+                    r.end_date,
+                    r.type,
+                    r.status,
+                    r.source,
+                    r.reason,
+                    r.total_days,
+                    r.created_at
+                FROM (
+                    SELECT 
+                        id, employee_id, start_date, end_date, type, status, 'leave' AS source, reason, total_days, created_at
+                    FROM leaves
+                    WHERE status <> 'Pending' AND manager_id = $1 AND tenant_id = $2
+                    UNION ALL
+                    SELECT 
+                        id, employee_id, start_date, end_date, type, status, 'compoff' AS source, reason, NULL as total_days, created_at
+                    FROM attendance
+                    WHERE status <> 'Pending' AND type = 'compoff' AND manager_id = $1 AND tenant_id = $2
+                    UNION ALL
+                    SELECT 
+                        id, employee_id, start_date, end_date, type, status, 'attendance' AS source, reason, total_days, created_at
+                    FROM attendance
+                    WHERE status <> 'Pending' AND type = 'general attendance' AND manager_id = $1 AND tenant_id = $2
+                ) r
+                JOIN employees e ON e.employee_id = r.employee_id
             `;
+
+            if (page && limit) {
+                const pageNum = parseInt(page);
+                const limitNum = parseInt(limit);
+                const offset = (pageNum - 1) * limitNum;
+
+                // Count Query (Correct me if this is expensive, but for now this works)
+                // Wrapping the whole logic is safest for consistent results count.
+                // However, I can just count the unions.
+                // Simplified count query:
+                const countQuery = `
+                    SELECT COUNT(*) as count FROM (
+                        SELECT id FROM leaves WHERE status <> 'Pending' AND manager_id = $1 AND tenant_id = $2
+                        UNION ALL
+                        SELECT id FROM attendance WHERE status <> 'Pending' AND type = 'compoff' AND manager_id = $1 AND tenant_id = $2
+                        UNION ALL
+                        SELECT id FROM attendance WHERE status <> 'Pending' AND type = 'general attendance' AND manager_id = $1 AND tenant_id = $2
+                    ) sub
+                `;
+
+                const countRes = await client.query(countQuery, [managerId, tenantId]);
+                const total = parseInt(countRes.rows[0].count);
+                const totalPages = Math.ceil(total / limitNum);
+
+                const finalQuery = `${baseQuery} ORDER BY r.start_date DESC LIMIT $3 OFFSET $4`;
+                const res = await client.query(finalQuery, [managerId, tenantId, limitNum, offset]);
+
+                return createResponse(200, {
+                    data: res.rows,
+                    meta: {
+                        total,
+                        page: pageNum,
+                        limit: limitNum,
+                        totalPages
+                    }
+                });
+            }
+
+            // Default (Legacy)
+            const query = `${baseQuery} ORDER BY r.start_date DESC`;
             const res = await client.query(query, [managerId, tenantId]);
             return createResponse(200, res.rows);
         }
