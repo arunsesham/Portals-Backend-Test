@@ -73,19 +73,37 @@ export const handler = async (event) => {
             // LIST EMPLOYEES
             const page = event.queryStringParameters?.page;
             const limit = event.queryStringParameters?.limit;
+            const search = event.queryStringParameters?.search;
 
             if (page && limit) {
                 const pageNum = parseInt(page);
                 const limitNum = parseInt(limit);
                 const offset = (pageNum - 1) * limitNum;
 
-                // Get total count
-                const countRes = await client.query('SELECT COUNT(*) FROM employees WHERE tenant_id = $1 AND is_active = TRUE', [tenantId]);
+                let countQuery = 'SELECT COUNT(*) FROM employees WHERE tenant_id = $1 AND is_active = TRUE';
+                let dataQuery = 'SELECT * FROM employees WHERE tenant_id = $1 AND is_active = TRUE';
+                let queryParams = [tenantId];
+                let dataParams = [tenantId];
+
+                // Add search filter if present
+                if (search) {
+                    const searchClause = ' AND (name ILIKE $2 OR email ILIKE $2)';
+                    countQuery += searchClause;
+                    dataQuery += searchClause;
+                    queryParams.push(`%${search}%`);
+                    dataParams.push(`%${search}%`);
+                }
+
+                // Add pagination
+                dataQuery += ' ORDER BY name ASC LIMIT $' + (dataParams.length + 1) + ' OFFSET $' + (dataParams.length + 2);
+                dataParams.push(limitNum, offset);
+
+                // Execute queries
+                const countRes = await client.query(countQuery, queryParams);
                 const total = parseInt(countRes.rows[0].count);
                 const totalPages = Math.ceil(total / limitNum);
 
-                // Get paginated data
-                const res = await client.query('SELECT * FROM employees WHERE tenant_id = $1 AND is_active = TRUE ORDER BY name ASC LIMIT $2 OFFSET $3', [tenantId, limitNum, offset]);
+                const res = await client.query(dataQuery, dataParams);
                 const employees = res.rows;
 
                 for (const emp of employees) {
