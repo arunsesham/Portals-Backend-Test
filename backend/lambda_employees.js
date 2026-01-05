@@ -8,7 +8,7 @@ let s3Client;
 const getS3Client = () => {
     if (!s3Client) {
         s3Client = new S3Client({
-            region: process.env.AWS_REGION,
+            region: process.env.AWS_REGION || "us-east-1",
             credentials: {
                 accessKeyId: process.env.AWS_ACCESS_KEY_ID,
                 secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
@@ -17,7 +17,7 @@ const getS3Client = () => {
     }
     return s3Client;
 };
-const BUCKET_NAME = process.env.AWS_S3_BUCKET;
+const BUCKET_NAME = process.env.AWS_S3_BUCKET || "portals-dev";
 
 const createResponse = (statusCode, body) => ({
     statusCode,
