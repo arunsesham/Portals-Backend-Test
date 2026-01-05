@@ -4,13 +4,19 @@ import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } fro
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 // AWS Configuration
-const s3Client = new S3Client({
-    region: process.env.AWS_REGION,
-    credentials: {
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+let s3Client;
+const getS3Client = () => {
+    if (!s3Client) {
+        s3Client = new S3Client({
+            region: process.env.AWS_REGION,
+            credentials: {
+                accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+                secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+            }
+        });
     }
-});
+    return s3Client;
+};
 const BUCKET_NAME = process.env.AWS_S3_BUCKET;
 
 const createResponse = (statusCode, body) => ({
@@ -42,8 +48,8 @@ export const handler = async (event) => {
 
                 const emp = res.rows[0];
                 if (emp.avatar_key) {
-                    const command = new GetObjectCommand({ Bucket: BUCKET_NAME, Key: emp.avatar_key });
-                    emp.avatar_url = await getSignedUrl(s3Client, command, { expiresIn: 43200 }); // 12 hours
+                    const command = new GetObjectCommand({ Bucket: process.env.AWS_S3_BUCKET, Key: emp.avatar_key });
+                    emp.avatar_url = await getSignedUrl(getS3Client(), command, { expiresIn: 43200 }); // 12 hours
                 } else {
                     emp.avatar_url = null;
                 }
@@ -84,11 +90,11 @@ export const handler = async (event) => {
             if (isAvatarAction && isUploadUrl && empId) {
                 const key = `employees/${tenantId}/${empId}/avatar.jpg`;
                 const command = new PutObjectCommand({
-                    Bucket: BUCKET_NAME,
+                    Bucket: process.env.AWS_S3_BUCKET,
                     Key: key,
                     ContentType: 'image/jpeg'
                 });
-                const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: 300 }); // 5 minutes
+                const uploadUrl = await getSignedUrl(getS3Client(), command, { expiresIn: 300 }); // 5 minutes
 
                 return createResponse(200, { uploadUrl, key });
             }
@@ -156,8 +162,8 @@ export const handler = async (event) => {
                 const key = `employees/${tenantId}/${empId}/avatar.jpg`;
 
                 // Delete from S3
-                const command = new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: key });
-                await s3Client.send(command);
+                const command = new DeleteObjectCommand({ Bucket: process.env.AWS_S3_BUCKET, Key: key });
+                await getS3Client().send(command);
 
                 // Set avatar_key to NULL in DB
                 await client.query(
