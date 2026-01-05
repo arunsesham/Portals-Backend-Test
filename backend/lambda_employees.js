@@ -159,10 +159,11 @@ export const handler = async (event) => {
             // 2. Confirm Upload: POST /employees/{id}/avatar
             if (isAvatarAction && empId) {
                 const key = `employees/${tenantId}/${empId}/avatar.jpg`;
+                const formattedDate = new Date().toISOString().split('T')[0];
                 // Update DB with the key
                 const updateRes = await client.query(
-                    'UPDATE employees SET avatar_key = $1, updated_at = NOW() WHERE employee_id = $2 AND tenant_id = $3 RETURNING *',
-                    [key, empId, tenantId]
+                    'UPDATE employees SET avatar_key = $1, updated_at = $2 WHERE employee_id = $3 AND tenant_id = $4 RETURNING *',
+                    [key, formattedDate, empId, tenantId]
                 );
                 return createResponse(200, { message: "Avatar confirmed", employee: updateRes.rows[0] });
             }
@@ -180,6 +181,8 @@ export const handler = async (event) => {
                     employee_id: nextEmployeeId,
                     tenant_id: tenantId,
                     is_active: true,
+                    created_at: new Date().toISOString().split('T')[0],
+                    updated_at: new Date().toISOString().split('T')[0],
                     ...filteredData
                 };
                 const columns = Object.keys(finalData).join(', ');
@@ -217,6 +220,7 @@ export const handler = async (event) => {
             // 3. Delete Avatar: DELETE /employees/{id}/avatar
             if (isAvatarAction) {
                 const key = `employees/${tenantId}/${empId}/avatar.jpg`;
+                const formattedDate = new Date().toISOString().split('T')[0];
 
                 // Delete from S3
                 const command = new DeleteObjectCommand({ Bucket: process.env.AWS_S3_BUCKET, Key: key });
@@ -224,8 +228,8 @@ export const handler = async (event) => {
 
                 // Set avatar_key to NULL in DB
                 await client.query(
-                    'UPDATE employees SET avatar_key = NULL, updated_at = NOW() WHERE employee_id = $1 AND tenant_id = $2',
-                    [empId, tenantId]
+                    'UPDATE employees SET avatar_key = NULL, updated_at = $1 WHERE employee_id = $2 AND tenant_id = $3',
+                    [formattedDate, empId, tenantId]
                 );
 
                 return createResponse(200, { message: "Avatar deleted successfully" });
