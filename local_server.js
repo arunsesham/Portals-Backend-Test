@@ -77,7 +77,12 @@ app.get('/employees', (req, res) => lambdaBridge(employeesHandler, req, res));
 app.post('/employees', (req, res) => lambdaBridge(employeesHandler, req, res));
 app.get('/employees/:id', (req, res) => lambdaBridge(employeesHandler, req, res));
 app.put('/employees/:id', (req, res) => lambdaBridge(employeesHandler, req, res));
+app.put('/employees/:id', (req, res) => lambdaBridge(employeesHandler, req, res));
 app.delete('/employees/:id', (req, res) => lambdaBridge(employeesHandler, req, res));
+// Avatar Routes
+app.post('/employees/:id/avatar/upload-url', (req, res) => lambdaBridge(employeesHandler, req, res));
+app.post('/employees/:id/avatar', (req, res) => lambdaBridge(employeesHandler, req, res));
+app.delete('/employees/:id/avatar', (req, res) => lambdaBridge(employeesHandler, req, res));
 app.post('/leaderboard', (req, res) => lambdaBridge(leaderboardHandler, req, res));
 
 // Work Modules
