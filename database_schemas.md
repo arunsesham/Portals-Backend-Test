@@ -65,7 +65,7 @@ CREATE TABLE public.dropdown_options (
 
 CREATE TABLE public.employees (
 	employee_id int4 NOT NULL,
-	"name" varchar(150) NOT NULL,
+	name varchar(150) NOT NULL,
 	email varchar(255) NOT NULL,
 	phone varchar(20) NULL,
 	"role" varchar(100) NULL,
@@ -85,6 +85,8 @@ CREATE TABLE public.employees (
 	created_at varchar(20) NULL,
 	updated_at varchar(20) NULL,
 	is_admin bool DEFAULT false NULL,
+	is_active bool DEFAULT true NULL,
+	avatar_key varchar(255) NULL,
 	CONSTRAINT employees_email_key UNIQUE (email),
 	CONSTRAINT employees_pkey PRIMARY KEY (employee_id),
 	CONSTRAINT fk_manager FOREIGN KEY (manager_id) REFERENCES public.employees(employee_id) ON DELETE SET NULL

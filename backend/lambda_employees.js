@@ -82,7 +82,7 @@ export const handler = async (event) => {
         if (httpMethod === 'POST') {
             // 1. Generate Upload URL: POST /employees/{id}/avatar/upload-url
             if (isAvatarAction && isUploadUrl && empId) {
-                const key = `employees/${empId}/avatar.jpg`;
+                const key = `employees/${tenantId}/${empId}/avatar.jpg`;
                 const command = new PutObjectCommand({
                     Bucket: BUCKET_NAME,
                     Key: key,
@@ -95,7 +95,7 @@ export const handler = async (event) => {
 
             // 2. Confirm Upload: POST /employees/{id}/avatar
             if (isAvatarAction && empId) {
-                const key = `employees/${empId}/avatar.jpg`;
+                const key = `employees/${tenantId}/${empId}/avatar.jpg`;
                 // Update DB with the key
                 const updateRes = await client.query(
                     'UPDATE employees SET avatar_key = $1, updated_at = NOW() WHERE employee_id = $2 AND tenant_id = $3 RETURNING *',
@@ -153,7 +153,7 @@ export const handler = async (event) => {
         if (httpMethod === 'DELETE' && empId) {
             // 3. Delete Avatar: DELETE /employees/{id}/avatar
             if (isAvatarAction) {
-                const key = `employees/${empId}/avatar.jpg`;
+                const key = `employees/${tenantId}/${empId}/avatar.jpg`;
 
                 // Delete from S3
                 const command = new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: key });
