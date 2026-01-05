@@ -239,6 +239,13 @@ export const handler = async (event) => {
                     'UPDATE leaves SET status = $1, manager_notes = $2, updated_at = $4 WHERE id = $3 AND tenant_id = $5',
                     [status, manager_notes, id, updated_at, tenantId]
                 );
+            } else if (source === 'attendance') {
+                // --- CASE C: Manager approves/rejects a GENERAL ATTENDANCE regularization request ---
+                // Just update status and manager_notes
+                await client.query(
+                    'UPDATE attendance SET status = $1, manager_reason = $2, updated_at = $3 WHERE id = $4 AND tenant_id = $5',
+                    [status, manager_notes, updated_at, id, tenantId]
+                );
             }
 
             await client.query('COMMIT');
