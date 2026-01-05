@@ -28,21 +28,21 @@ export const handler = async (event) => {
         }
 
         if (method === 'POST') {
-            const { title, description, type, color, id, created_at, page, is_active } = JSON.parse(event.body);
+            const { title, description, type, color, id, created_at, page, is_active, from_date, to_date, is_schedule } = JSON.parse(event.body);
             const activeStatus = is_active !== undefined ? is_active : true;
             const res = await client.query(
-                'INSERT INTO announcements (title, description, type, color, id, created_at, page, tenant_id, is_active) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *',
-                [title, description, type, color, id, created_at, page, tenantId, activeStatus]
+                'INSERT INTO announcements (title, description, type, color, id, created_at, page, tenant_id, is_active, from_date, to_date, is_schedule) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *',
+                [title, description, type, color, id, created_at, page, tenantId, activeStatus, from_date, to_date, is_schedule]
             );
             console.log(res);
             return createResponse(201, res.rows[0]);
         }
 
         if (method === 'PUT' && id) {
-            const { title, description, type, color, updated_at } = JSON.parse(event.body);
+            const { title, description, type, color, updated_at, from_date, to_date, is_schedule } = JSON.parse(event.body);
             const res = await client.query(
-                'UPDATE announcements SET title=$1, description=$2, type=$3, color=$4, updated_at = $5 WHERE id=$6 AND tenant_id=$7 RETURNING *',
-                [title, description, type, color, updated_at, id, tenantId]
+                'UPDATE announcements SET title=$1, description=$2, type=$3, color=$4, updated_at=$5, from_date=$6, to_date=$7, is_schedule=$8 WHERE id=$9 AND tenant_id=$10 RETURNING *',
+                [title, description, type, color, updated_at, from_date, to_date, is_schedule, id, tenantId]
             );
             return createResponse(200, res.rows[0]);
         }
