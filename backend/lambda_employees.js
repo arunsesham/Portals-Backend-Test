@@ -1,5 +1,17 @@
 
 import pool from './db.js';
+import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+
+// AWS Configuration
+const s3Client = new S3Client({
+    region: process.env.AWS_REGION,
+    credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+    }
+});
+const BUCKET_NAME = process.env.AWS_S3_BUCKET;
 
 const createResponse = (statusCode, body) => ({
     statusCode,
@@ -12,7 +24,10 @@ const createResponse = (statusCode, body) => ({
 
 export const handler = async (event) => {
     const httpMethod = event.httpMethod || event.requestContext?.httpMethod;
+    const path = event.path || event.requestContext?.path; // e.g., /employees/123/avatar/upload-url
     const empId = event.pathParameters?.id;
+    const isAvatarAction = path?.includes('/avatar');
+    const isUploadUrl = path?.includes('/upload-url');
     const emailParam = event.queryStringParameters?.email;
     const tenantId = '79c00000-0000-0000-0000-000000000001';
 
@@ -23,80 +38,145 @@ export const handler = async (event) => {
         if (httpMethod === 'GET') {
             if (empId) {
                 const res = await client.query('SELECT * FROM employees WHERE employee_id = $1 AND tenant_id = $2 AND is_active = TRUE', [empId, tenantId]);
-                return res.rows.length ? createResponse(200, res.rows[0]) : createResponse(404, { message: "Employee not found" });
+                if (res.rows.length === 0) return createResponse(404, { message: "Employee not found" });
+
+                const emp = res.rows[0];
+                if (emp.avatar_key) {
+                    const command = new GetObjectCommand({ Bucket: BUCKET_NAME, Key: emp.avatar_key });
+                    emp.avatar_url = await getSignedUrl(s3Client, command, { expiresIn: 43200 }); // 12 hours
+                } else {
+                    emp.avatar_url = null;
+                }
+                return createResponse(200, emp);
             }
 
             if (emailParam) {
                 const res = await client.query('SELECT * FROM employees WHERE email = $1 AND tenant_id = $2 AND is_active = TRUE', [emailParam, tenantId]);
-                return res.rows.length ? createResponse(200, res.rows[0]) : createResponse(404, { message: "Employee not found with that email" });
+                if (res.rows.length === 0) return createResponse(404, { message: "Employee not found with that email" });
+
+                const emp = res.rows[0];
+                if (emp.avatar_key) {
+                    const command = new GetObjectCommand({ Bucket: BUCKET_NAME, Key: emp.avatar_key });
+                    emp.avatar_url = await getSignedUrl(s3Client, command, { expiresIn: 43200 });
+                } else {
+                    emp.avatar_url = null;
+                }
+                return createResponse(200, emp);
             }
 
             const res = await client.query('SELECT * FROM employees WHERE tenant_id = $1 AND is_active = TRUE ORDER BY name ASC', [tenantId]);
-            return createResponse(200, res.rows);
+            const employees = res.rows;
+
+            // Generate signed URLs for all employees with avatars
+            for (const emp of employees) {
+                if (emp.avatar_key) {
+                    const command = new GetObjectCommand({ Bucket: BUCKET_NAME, Key: emp.avatar_key });
+                    emp.avatar_url = await getSignedUrl(s3Client, command, { expiresIn: 43200 });
+                } else {
+                    emp.avatar_url = null;
+                }
+            }
+            return createResponse(200, employees);
         }
 
         if (httpMethod === 'POST') {
-            const data = JSON.parse(event.body);
-            const { header, ...filteredData } = data;
-            const countResult = await client.query(
-                'SELECT COUNT(*)::int AS count FROM employees'
-            );
-            const nextEmployeeId = countResult.rows[0].count + 1;
-            console.log(nextEmployeeId);
-            const finalData = {
-                employee_id: nextEmployeeId,
-                tenant_id: tenantId,
-                is_active: true,
-                ...filteredData
-            };
-            const columns = Object.keys(finalData).join(', ');
-            const placeholders = Object.keys(finalData)
-                .map((_, i) => `$${i + 1}`)
-                .join(', ');
-            const values = Object.values(finalData);
-            console.log(
-                `INSERT INTO employees (${columns}) VALUES (${placeholders}) RETURNING *`,
-                values
-            );
-            const res = await client.query(
-                `INSERT INTO employees (${columns}) VALUES (${placeholders}) RETURNING *`,
-                values
-            );
-            return createResponse(201, res.rows[0]);
+            // 1. Generate Upload URL: POST /employees/{id}/avatar/upload-url
+            if (isAvatarAction && isUploadUrl && empId) {
+                const key = `employees/${empId}/avatar.jpg`;
+                const command = new PutObjectCommand({
+                    Bucket: BUCKET_NAME,
+                    Key: key,
+                    ContentType: 'image/jpeg'
+                });
+                const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: 300 }); // 5 minutes
+
+                return createResponse(200, { uploadUrl, key });
+            }
+
+            // 2. Confirm Upload: POST /employees/{id}/avatar
+            if (isAvatarAction && empId) {
+                const key = `employees/${empId}/avatar.jpg`;
+                // Update DB with the key
+                const updateRes = await client.query(
+                    'UPDATE employees SET avatar_key = $1, updated_at = NOW() WHERE employee_id = $2 AND tenant_id = $3 RETURNING *',
+                    [key, empId, tenantId]
+                );
+                return createResponse(200, { message: "Avatar confirmed", employee: updateRes.rows[0] });
+            }
+
+            // Standard Employee Creation
+            if (!isAvatarAction) {
+                const data = JSON.parse(event.body);
+                const { header, ...filteredData } = data;
+                const countResult = await client.query(
+                    'SELECT COUNT(*)::int AS count FROM employees'
+                );
+                const nextEmployeeId = countResult.rows[0].count + 1;
+                console.log(nextEmployeeId);
+                const finalData = {
+                    employee_id: nextEmployeeId,
+                    tenant_id: tenantId,
+                    is_active: true,
+                    ...filteredData
+                };
+                const columns = Object.keys(finalData).join(', ');
+                const placeholders = Object.keys(finalData)
+                    .map((_, i) => `$${i + 1}`)
+                    .join(', ');
+                const values = Object.values(finalData);
+                const res = await client.query(
+                    `INSERT INTO employees (${columns}) VALUES (${placeholders}) RETURNING *`,
+                    values
+                );
+                return createResponse(201, res.rows[0]);
+            }
         }
 
 
-        if (httpMethod === 'PUT' && empId) {
+        if (httpMethod === 'PUT' && empId && !isAvatarAction) {
             const data = JSON.parse(event.body);
-            console.log(JSON.parse(event.body));
-
             const { updated_at, ...rest } = data;
             const fields = Object.keys(rest).filter(k => k !== 'employee_id');
-            const setClause = fields.map((k, i) => `${k} = $${i + 2}`).join(', ');
             const values = fields.map(k => rest[k]);
 
-            // Add updated_at if present
-            let finalQuery = `UPDATE employees SET ${setClause}`;
-            let finalValues = [empId, ...values];
-
-            if (updated_at) {
-                finalQuery += `, updated_at = $${finalValues.length + 1}`;
-                finalValues.push(updated_at);
-            }
-
-            finalQuery += ` WHERE employee_id = $1 AND tenant_id = '${tenantId}' RETURNING *`; // Hardcoding tenantId in WHERE or adding as param. Adding as param is cleaner but variable length. Let's use literal for simplicity or append.
-            // Re-doing to append tenantId check properly.
-
-            // Simpler approach:
-            // Just update strict fields provided.
             const setClauseWithUpdate = [...fields, 'updated_at'].map((k, i) => `${k} = $${i + 2}`).join(', ');
-            const valuesWithUpdate = [...values, updated_at];
+            const valuesWithUpdate = [...values, updated_at || new Date().toISOString().split('T')[0]];
 
-            // Wait, if updated_at is missing? User said send from FE. I should expect it.
-
-            const updateRes = await client.query(`UPDATE employees SET ${setClauseWithUpdate} WHERE employee_id = $1 AND tenant_id = $${valuesWithUpdate.length + 2} RETURNING *`, [empId, ...valuesWithUpdate, tenantId]);
+            const updateRes = await client.query(
+                `UPDATE employees SET ${setClauseWithUpdate} WHERE employee_id = $1 AND tenant_id = $${valuesWithUpdate.length + 2} RETURNING *`,
+                [empId, ...valuesWithUpdate, tenantId]
+            );
 
             return createResponse(200, updateRes.rows[0]);
+        }
+
+        if (httpMethod === 'DELETE' && empId) {
+            // 3. Delete Avatar: DELETE /employees/{id}/avatar
+            if (isAvatarAction) {
+                const key = `employees/${empId}/avatar.jpg`;
+
+                // Delete from S3
+                const command = new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: key });
+                await s3Client.send(command);
+
+                // Set avatar_key to NULL in DB
+                await client.query(
+                    'UPDATE employees SET avatar_key = NULL, updated_at = NOW() WHERE employee_id = $1 AND tenant_id = $2',
+                    [empId, tenantId]
+                );
+
+                return createResponse(200, { message: "Avatar deleted successfully" });
+            }
+
+            // Soft delete employee (existing logic fallback if needed, but wasn't in original view)
+            // Assuming previous soft delete logic was in a separate block or user wants me to add it?
+            // The previous context showed no explicit DELETE handler in the view, but the conversation history mentioned soft deletes.
+            // I will assume for now I only need to handle the avatar DELETE here as per request.
+            // But wait, the previous code block ended at line 100 which was inside PUT.
+            // I need to be careful not to overwrite existing DELETE logic if it existed further down.
+            // Let me check if there was a DELETE block in the previous `view_file` output.
+            // The `view_file` output ended at line 100 which was the end of PUT. 
+            // I will append the DELETE block.
         }
 
         if (httpMethod === 'DELETE' && empId) {
