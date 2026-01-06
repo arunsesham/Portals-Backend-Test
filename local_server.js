@@ -43,7 +43,11 @@ const lambdaBridge = async (handler, req, res) => {
 
     try {
         const result = await handler(event);
-        res.status(result.statusCode).set(result.headers).send(result.body);
+        if (result.isBase64Encoded) {
+            res.status(result.statusCode).set(result.headers).send(Buffer.from(result.body, 'base64'));
+        } else {
+            res.status(result.statusCode).set(result.headers).send(result.body);
+        }
     } catch (error) {
         console.error("Local Server Error:", error);
         res.status(500).json({ error: "Internal Server Error", details: error.message });

@@ -25,24 +25,105 @@ export const handler = async (event) => {
             let data = [];
 
             if (reportType === 'Attendance') {
-                query = `SELECT a.date, e.name, a.status, a.start_date, a.end_date, a.total_days FROM attendance a JOIN employees e ON a.employee_id = e.employee_id WHERE a.date >= $1 AND a.date <= $2 AND a.tenant_id = '${tenantId}'`;
+                // Fetch basic attendance data
+                // Selecting BOTH sets of columns to handle fallback logic
+                query = `SELECT a.date, e.name, a.status, a.check_in, a.check_out, a.total_hours, a.start_date, a.end_date, a.total_days FROM attendance a JOIN employees e ON a.employee_id = e.employee_id WHERE a.date >= $1 AND a.date <= $2 AND a.tenant_id = '${tenantId}'`;
+
+                if (employeeId && employeeId !== 'All Employees') {
+                    query += ` AND e.name = $3`; // Using Name as per UI request
+                    params.push(employeeId);
+                }
+                query += ' ORDER BY a.date DESC';
+
+                const attRes = await client.query(query, params);
+                const attendanceRecords = attRes.rows;
+
+                // Fetch Holidays
+                const holRes = await client.query(`SELECT date, name FROM holidays WHERE date >= $1 AND date <= $2 AND tenant_id = '${tenantId}' AND is_active = TRUE`, [fromDate, toDate]);
+                const holidays = holRes.rows;
+
+                // Generate Calendar Data
+                const start = new Date(fromDate);
+                const end = new Date(toDate);
+                const fullData = [];
+
+                // Helper to get array of dates
+                for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                    const dateStr = d.toISOString().split('T')[0];
+                    const dayName = d.toLocaleDateString('en-US', { weekday: 'long' });
+                    const isWeekend = dayName === 'Saturday' || dayName === 'Sunday';
+
+                    // Find Holiday
+                    const holiday = holidays.find(h => {
+                        const hDate = typeof h.date === 'string' ? h.date : new Date(h.date).toISOString().split('T')[0];
+                        return hDate === dateStr;
+                    });
+
+                    // If Specific Employee is selected, we map JUST that employee for every day
+                    // If "All Employees", we should ideally list ALL employees for EVERY day, but that's a Cartesian product (Employees * Days). 
+                    // Given the user request "each day corresponds to employee name", and "All option could also possible", 
+                    // let's assume if ALL is selected, we group by Employee? Or we just list the actual attendance records + gaps?
+                    // User said: "sheet should be an exact data like a calender days, each day correspods to employee name, applied or not"
+                    // This implies for "All Employees", we need a row for EVERY employee for EVERY day.
+
+                    // Fetch list of RELEVANT employees
+                    let employeesToMap = [];
+                    if (employeeId && employeeId !== 'All Employees') {
+                        employeesToMap = [{ name: employeeId }];
+                    } else {
+                        const allEmps = await client.query(`SELECT name FROM employees WHERE tenant_id = '${tenantId}' AND is_active = TRUE ORDER BY name ASC`);
+                        employeesToMap = allEmps.rows;
+                    }
+
+                    employeesToMap.forEach(emp => {
+                        const att = attendanceRecords.find(a => {
+                            const aDate = typeof a.date === 'string' ? a.date : new Date(a.date).toISOString().split('T')[0];
+                            return aDate === dateStr && a.name === emp.name;
+                        });
+
+                        let status = 'Absent'; // Default
+                        let displayStart = '-';
+                        let displayEnd = '-';
+                        let displayDuration = '-';
+
+                        if (att) {
+                            status = att.status;
+                            // Priority Logic: Start/End Date > Check In/Out
+                            displayStart = att.start_date || att.check_in || '-';
+                            displayEnd = att.end_date || att.check_out || '-';
+                            displayDuration = att.total_days || att.total_hours || '-';
+                        } else if (holiday) {
+                            status = `Holiday: ${holiday.name}`;
+                        } else if (isWeekend) {
+                            status = 'Weekend';
+                        }
+
+                        fullData.push({
+                            date: dateStr,
+                            name: emp.name,
+                            status: status,
+                            start_time: displayStart,
+                            end_time: displayEnd,
+                            duration: displayDuration,
+                            day: dayName
+                        });
+                    });
+                }
+
+                data = fullData; // Replace raw query data with generated calendar data
+
             } else {
-                // Leaves
+                // Leaves (Keep existing logic for now, or update if requested later)
                 query = `SELECT l.start_date, l.end_date, e.name, l.type, l.status, l.reason FROM leaves l JOIN employees e ON l.employee_id = e.employee_id WHERE l.start_date >= $1 AND l.start_date <= $2 AND l.tenant_id = '${tenantId}'`;
+
+                if (employeeId && employeeId !== 'All Employees') {
+                    query += ` AND e.name = $3`;
+                    params.push(employeeId);
+                }
+                query += ' ORDER BY l.start_date DESC';
+                const res = await client.query(query, params);
+                data = res.rows;
             }
-
-            if (employeeId && employeeId !== 'All Employees') {
-                query += ` AND e.name = $3`; // Using name search as per previous context or ID? Previous context used Name in UI but often ID in backend. Let's assume ID is passed but "All Employees" is string value.
-                // Wait, previous code used `e.name = $3`. Let's stick to that if UI sends name. 
-                // Or if UI sends ID, we should change query.
-                // Safest is to check if it looks like a UUID or Number. But original code used `e.name`.
-                params.push(employeeId);
-            }
-
-            query += reportType === 'Attendance' ? ' ORDER BY a.date DESC' : ' ORDER BY l.start_date DESC';
-
-            const res = await client.query(query, params);
-            data = res.rows;
 
             if (exportType === 'PDF') {
                 const doc = new PDFDocument();
@@ -57,9 +138,9 @@ export const handler = async (event) => {
                 doc.moveDown();
 
                 data.forEach((row, i) => {
-                    const dateStr = typeof row.date === 'string' ? row.date : new Date(row.date).toISOString().split('T')[0];
+                    const dateStr = typeof row.date === 'string' ? row.date : new Date(row.date).toISOString().split('T')[0]; // Safe check
                     const text = reportType === 'Attendance'
-                        ? `${dateStr} - ${row.name} - ${row.status} (${row.start_date || '-'} to ${row.end_date || '-'})`
+                        ? `${dateStr} (${row.day}) - ${row.name} - ${row.status} (${row.start_time} - ${row.end_time})`
                         : `${row.start_date} to ${row.end_date} - ${row.name} - ${row.type} (${row.status})`;
                     doc.text(`${i + 1}. ${text}`);
                 });
@@ -90,11 +171,12 @@ export const handler = async (event) => {
                 if (reportType === 'Attendance') {
                     sheet.columns = [
                         { header: 'Date', key: 'date', width: 15 },
+                        { header: 'Day', key: 'day', width: 15 },
                         { header: 'Employee', key: 'name', width: 20 },
-                        { header: 'Status', key: 'status', width: 15 },
-                        { header: 'Check In', key: 'start_date', width: 15 },
-                        { header: 'Check Out', key: 'end_date', width: 15 },
-                        { header: 'Total Days', key: 'total_days', width: 15 }
+                        { header: 'Status', key: 'status', width: 25 },
+                        { header: 'Start Time / Date', key: 'start_time', width: 20 },
+                        { header: 'End Time / Date', key: 'end_time', width: 20 },
+                        { header: 'Duration', key: 'duration', width: 15 }
                     ];
                 } else {
                     sheet.columns = [
