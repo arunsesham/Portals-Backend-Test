@@ -41,7 +41,7 @@ export const handler = async (event) => {
             return createResponse(201, res.rows[0]);
         }
         if (method === 'PUT' && id) {
-            const { policy_name, policy_type, document_url, updated_at } =
+            const { policy_name, policy_type, document_url, updated_at, is_active } =
                 JSON.parse(event.body);
 
             const res = await client.query(
@@ -49,10 +49,11 @@ export const handler = async (event) => {
             SET policy_name = $1,
                 policy_type = $2,
                 document_url = $3,
-                updated_at = $5
+                updated_at = $5,
+                is_active = $7
             WHERE policy_id = $4 AND tenant_id = $6
             RETURNING *`,
-                [policy_name, policy_type, document_url, id, updated_at, tenantId]
+                [policy_name, policy_type, document_url, id, updated_at, tenantId, is_active]
             );
 
             return createResponse(200, res.rows[0]);
