@@ -32,6 +32,9 @@ CREATE TABLE public.attendance (
 	created_at varchar(20) NULL,
 	updated_at varchar(20) NULL,
 	tenant_id varchar(50) NULL,
+	is_active bool DEFAULT true NULL,
+	approved_on varchar(50) NULL,
+	rejected_on varchar(50) NULL,
 	CONSTRAINT attendance_unique UNIQUE (id),
 	CONSTRAINT fk_attendance_employee FOREIGN KEY (employee_id) REFERENCES public.employees(employee_id) ON DELETE CASCADE
 );
@@ -118,6 +121,9 @@ CREATE TABLE public.leaves (
 	tenant_id varchar(50) NULL,
 	created_at varchar(20) NULL,
 	updated_at varchar(20) NULL,
+	is_active bool DEFAULT true NULL,
+	approved_on varchar(50) NULL,
+	rejected_on varchar(50) NULL,
 	CONSTRAINT chk_leave_status CHECK (((status)::text = ANY ((ARRAY['Pending'::character varying, 'Approved'::character varying, 'Rejected'::character varying])::text[]))),
 	CONSTRAINT fk_leaves_employee FOREIGN KEY (employee_id) REFERENCES public.employees(employee_id) ON DELETE CASCADE
 );

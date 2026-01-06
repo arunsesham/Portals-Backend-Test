@@ -208,15 +208,6 @@ export const handler = async (event) => {
                         [JSON.stringify([newEntry]), employee_id]
                     );
                 }
-                await client.query('UPDATE attendance SET status = $1, updated_at=$3 WHERE id = $2 AND tenant_id = $4', [status, id, updated_at, tenantId]);
-
-            } else if (source === 'leave') {
-                // --- CASE B: Manager approves/rejects a LEAVE request ---
-                const leaveRes = await client.query('SELECT employee_id FROM leaves WHERE id = $1 AND tenant_id = $2', [id, tenantId]);
-                if (leaveRes.rows.length === 0) throw new Error("Leave record not found");
-                const employeeId = leaveRes.rows[0].employee_id;
-
-                const empData = await client.query('SELECT leave_balance, comp_off FROM employees WHERE employee_id = $1 AND tenant_id = $2', [employeeId, tenantId]);
                 let { leave_balance, comp_off } = empData.rows[0];
                 comp_off = comp_off || [];
 
@@ -240,17 +231,36 @@ export const handler = async (event) => {
                     'UPDATE employees SET leave_balance = $1, comp_off = $2 WHERE employee_id = $3 AND tenant_id = $4',
                     [leave_balance, JSON.stringify(comp_off), employeeId, tenantId]
                 );
-                await client.query(
-                    'UPDATE leaves SET status = $1, manager_notes = $2, updated_at = $4 WHERE id = $3 AND tenant_id = $5',
-                    [status, manager_notes, id, updated_at, tenantId]
-                );
+                let dateField = status === 'Approved' ? 'approved_on' : (status === 'Rejected' ? 'rejected_on' : null);
+                let dateValue = dateField ? new Date().toISOString().split('T')[0] : null;
+
+                if (dateField) {
+                    await client.query(
+                        `UPDATE leaves SET status = $1, manager_notes = $2, updated_at = $4, ${dateField} = $6 WHERE id = $3 AND tenant_id = $5`,
+                        [status, manager_notes, id, updated_at, tenantId, dateValue]
+                    );
+                } else {
+                    await client.query(
+                        'UPDATE leaves SET status = $1, manager_notes = $2, updated_at = $4 WHERE id = $3 AND tenant_id = $5',
+                        [status, manager_notes, id, updated_at, tenantId]
+                    );
+                }
             } else if (source === 'attendance') {
                 // --- CASE C: Manager approves/rejects a GENERAL ATTENDANCE regularization request ---
-                // Just update status and manager_notes
-                await client.query(
-                    'UPDATE attendance SET status = $1, manager_reason = $2, updated_at = $3 WHERE id = $4 AND tenant_id = $5',
-                    [status, manager_notes, updated_at, id, tenantId]
-                );
+                let dateField = status === 'Approved' ? 'approved_on' : (status === 'Rejected' ? 'rejected_on' : null);
+                let dateValue = dateField ? new Date().toISOString().split('T')[0] : null;
+
+                if (dateField) {
+                    await client.query(
+                        `UPDATE attendance SET status = $1, manager_reason = $2, updated_at = $3, ${dateField} = $6 WHERE id = $4 AND tenant_id = $5`,
+                        [status, manager_notes, updated_at, id, tenantId, dateValue]
+                    );
+                } else {
+                    await client.query(
+                        'UPDATE attendance SET status = $1, manager_reason = $2, updated_at = $3 WHERE id = $4 AND tenant_id = $5',
+                        [status, manager_notes, updated_at, id, tenantId]
+                    );
+                }
             }
 
             await client.query('COMMIT');
