@@ -206,17 +206,31 @@ export const handler = async (event) => {
 
         if (httpMethod === 'PUT' && empId && !isAvatarAction) {
             const data = JSON.parse(event.body);
-            const { updated_at, ...rest } = data;
-            const fields = Object.keys(rest).filter(k => k !== 'employee_id');
-            const values = fields.map(k => rest[k]);
+            const restrictedFields = ['employee_id', 'tenant_id', 'created_at', 'updated_at', 'avatar_key'];
+            const fields = Object.keys(data).filter(k => !restrictedFields.includes(k));
 
-            const setClauseWithUpdate = [...fields, 'updated_at'].map((k, i) => `${k} = $${i + 2}`).join(', ');
-            const valuesWithUpdate = [...values, updated_at || new Date().toISOString().split('T')[0]];
+            if (fields.length === 0) {
+                return createResponse(400, { message: "No valid fields provided for update" });
+            }
+
+            const values = fields.map(k => data[k]);
+            const updatedAt = new Date().toISOString().split('T')[0];
+
+            // Construct SET clause: $2, $3, ...
+            const setClause = fields.map((k, i) => `${k} = $${i + 2}`).join(', ');
+            // Add updated_at to the SET clause
+            const finalSetClause = `${setClause}, updated_at = $${fields.length + 2}`;
+
+            const queryParams = [empId, ...values, updatedAt, tenantId];
 
             const updateRes = await client.query(
-                `UPDATE employees SET ${setClauseWithUpdate} WHERE employee_id = $1 AND tenant_id = $${valuesWithUpdate.length + 2} RETURNING *`,
-                [empId, ...valuesWithUpdate, tenantId]
+                `UPDATE employees SET ${finalSetClause} WHERE employee_id = $1 AND tenant_id = $${queryParams.length} RETURNING *`,
+                queryParams
             );
+
+            if (updateRes.rows.length === 0) {
+                return createResponse(404, { message: "Employee not found" });
+            }
 
             return createResponse(200, updateRes.rows[0]);
         }
@@ -240,31 +254,19 @@ export const handler = async (event) => {
                 return createResponse(200, { message: "Avatar deleted successfully" });
             }
 
-            // Soft delete employee (existing logic fallback if needed, but wasn't in original view)
-            // Assuming previous soft delete logic was in a separate block or user wants me to add it?
-            // The previous context showed no explicit DELETE handler in the view, but the conversation history mentioned soft deletes.
-            // I will assume for now I only need to handle the avatar DELETE here as per request.
-            // But wait, the previous code block ended at line 100 which was inside PUT.
-            // I need to be careful not to overwrite existing DELETE logic if it existed further down.
-            // Let me check if there was a DELETE block in the previous `view_file` output.
-            // The `view_file` output ended at line 100 which was the end of PUT. 
-            // I will append the DELETE block.
-        }
+            // Soft delete employee
+            const body = JSON.parse(event.body || '{}');
+            const updatedAt = body.updated_at || new Date().toISOString().split('T')[0];
 
-        if (httpMethod === 'DELETE' && empId) {
-            console.log(empId);
-            // Employees usually don't have is_active in the schema block provided? 
-            // Schema has `leaves_remaining`, etc. `is_active` NOT listed in schema for employees table in what I saw?
-            // "employees" table schema provided: is_admin bool. NO is_active column shown in schema from Step 23.
-            // Checking Step 23 schema for employees: ... is_admin bool. NO is_active.
-            // User request: "for all the deletes make sure to use the 'is_active' boolean flag to update".
-            // I should add Soft Delete logic assuming the column EXISTS or will exist.
-            // I will assume standard requirement applies even if schema missed it, or I should verify.
-            // Plan said: "User Review Required... assumes all tables have is_active". User said PROCEED.
-            // So I proceed assuming it exists.
+            const deleteRes = await client.query(
+                'UPDATE employees SET is_active = FALSE, updated_at = $2 WHERE employee_id=$1 AND tenant_id=$3 RETURNING employee_id',
+                [empId, updatedAt, tenantId]
+            );
 
-            const { updated_at } = JSON.parse(event.body || '{}');
-            await client.query('UPDATE employees SET is_active = FALSE, updated_at = $2 WHERE employee_id=$1 AND tenant_id=$3', [empId, updated_at, tenantId]);
+            if (deleteRes.rowCount === 0) {
+                return createResponse(404, { message: "Employee not found" });
+            }
+
             return createResponse(200, { success: true });
         }
 
