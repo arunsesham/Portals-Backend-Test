@@ -107,7 +107,7 @@ export const handler = async (event) => {
                 description,
                 created_by
             FROM policies
-            WHERE tenant_id = $1 AND is_active = TRUE
+            WHERE tenant_id = $1
         `, [tenantId]);
 
         // Leaves this month
