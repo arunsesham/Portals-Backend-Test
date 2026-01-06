@@ -70,6 +70,11 @@ export const handler = async (event) => {
                 return createResponse(200, emp);
             }
 
+            if (event.queryStringParameters?.type === 'dropdown') {
+                const res = await client.query('SELECT employee_id, name, email FROM employees WHERE tenant_id = $1 AND is_active = TRUE ORDER BY name ASC', [tenantId]);
+                return createResponse(200, res.rows);
+            }
+
             // LIST EMPLOYEES
             const page = event.queryStringParameters?.page;
             const limit = event.queryStringParameters?.limit;
