@@ -30,7 +30,7 @@ export const handler = async (event) => {
                 // 2. Multi-day records (`start_date` IS NOT NULL) OVERLAP with the range
                 //    Overlap Logic: (StartA <= EndB) AND (EndA >= StartB)
                 query = `
-                    SELECT a.date, e.name, a.status, a.check_in, a.check_out, a.total_hours, a.start_date, a.end_date, a.total_days 
+                    SELECT a.date, e.name, a.employee_id, a.status, a.check_in, a.check_out, a.total_hours, a.start_date, a.end_date, a.total_days 
                     FROM attendance a 
                     JOIN employees e ON a.employee_id = e.employee_id 
                     WHERE a.tenant_id = '${tenantId}' AND (
@@ -41,7 +41,9 @@ export const handler = async (event) => {
                 `;
 
                 if (employeeId && employeeId !== 'All Employees') {
-                    query += ` AND e.name = $3`; // Using Name as per UI request
+                    // Try to be smart: if input looks like a name, filter by name
+                    // But we rely on ID for mapping later, so we just filter the RESULT set of employees logic below
+                    query += ` AND e.name = $3`;
                     params.push(employeeId);
                 }
                 // Order isn't strictly necessary for the map logic but good for debugging raw data
@@ -78,19 +80,22 @@ export const handler = async (event) => {
                     // User said: "sheet should be an exact data like a calender days, each day correspods to employee name, applied or not"
                     // This implies for "All Employees", we need a row for EVERY employee for EVERY day.
 
-                    // Fetch list of RELEVANT employees
+                    // Fetch list of RELEVANT employees with IDs
                     let employeesToMap = [];
                     if (employeeId && employeeId !== 'All Employees') {
-                        employeesToMap = [{ name: employeeId }];
+                        // If specific employee selected by Name, we MUST fetch their ID(s) first to map correctly
+                        // Note: If multiple employees have same name, this will return all of them, which is correct (we want separate rows for each person)
+                        const specificEmps = await client.query(`SELECT employee_id, name FROM employees WHERE tenant_id = '${tenantId}' AND is_active = TRUE AND name = $1`, [employeeId]);
+                        employeesToMap = specificEmps.rows;
                     } else {
-                        const allEmps = await client.query(`SELECT name FROM employees WHERE tenant_id = '${tenantId}' AND is_active = TRUE ORDER BY name ASC`);
+                        const allEmps = await client.query(`SELECT employee_id, name FROM employees WHERE tenant_id = '${tenantId}' AND is_active = TRUE ORDER BY name ASC`);
                         employeesToMap = allEmps.rows;
                     }
 
                     employeesToMap.forEach(emp => {
-                        // Find attendance record for this specific day
+                        // Find attendance record for this specific day using EMPLOYEE ID
                         const att = attendanceRecords.find(a => {
-                            if (a.name !== emp.name) return false;
+                            if (a.employee_id !== emp.employee_id) return false;
 
                             // Check 1: Multi-day range match
                             if (a.start_date && a.end_date) {
