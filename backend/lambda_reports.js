@@ -25,14 +25,26 @@ export const handler = async (event) => {
             let data = [];
 
             if (reportType === 'Attendance') {
-                // Fetch basic attendance data
-                // Selecting BOTH sets of columns to handle fallback logic
-                query = `SELECT a.date, e.name, a.status, a.check_in, a.check_out, a.total_hours, a.start_date, a.end_date, a.total_days FROM attendance a JOIN employees e ON a.employee_id = e.employee_id WHERE a.date >= $1 AND a.date <= $2 AND a.tenant_id = '${tenantId}'`;
+                // Fetch attendance data where:
+                // 1. Single-day records (`start_date` IS NULL) fall within range
+                // 2. Multi-day records (`start_date` IS NOT NULL) OVERLAP with the range
+                //    Overlap Logic: (StartA <= EndB) AND (EndA >= StartB)
+                query = `
+                    SELECT a.date, e.name, a.status, a.check_in, a.check_out, a.total_hours, a.start_date, a.end_date, a.total_days 
+                    FROM attendance a 
+                    JOIN employees e ON a.employee_id = e.employee_id 
+                    WHERE a.tenant_id = '${tenantId}' AND (
+                        (a.start_date IS NULL AND a.date >= $1 AND a.date <= $2)
+                        OR
+                        (a.start_date IS NOT NULL AND a.start_date <= $2 AND a.end_date >= $1)
+                    )
+                `;
 
                 if (employeeId && employeeId !== 'All Employees') {
                     query += ` AND e.name = $3`; // Using Name as per UI request
                     params.push(employeeId);
                 }
+                // Order isn't strictly necessary for the map logic but good for debugging raw data
                 query += ' ORDER BY a.date DESC';
 
                 const attRes = await client.query(query, params);
@@ -76,9 +88,19 @@ export const handler = async (event) => {
                     }
 
                     employeesToMap.forEach(emp => {
+                        // Find attendance record for this specific day
                         const att = attendanceRecords.find(a => {
+                            if (a.name !== emp.name) return false;
+
+                            // Check 1: Multi-day range match
+                            if (a.start_date && a.end_date) {
+                                // Assuming start_date/end_date in DB are 'YYYY-MM-DD' strings
+                                return dateStr >= a.start_date && dateStr <= a.end_date;
+                            }
+
+                            // Check 2: Single-day match
                             const aDate = typeof a.date === 'string' ? a.date : new Date(a.date).toISOString().split('T')[0];
-                            return aDate === dateStr && a.name === emp.name;
+                            return aDate === dateStr;
                         });
 
                         let status = 'Absent'; // Default
