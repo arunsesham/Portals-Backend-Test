@@ -63,7 +63,7 @@ export const handler = async (event) => {
                 const emp = res.rows[0];
                 if (emp.avatar_key) {
                     const command = new GetObjectCommand({ Bucket: BUCKET_NAME, Key: emp.avatar_key });
-                    emp.avatar_url = await getSignedUrl(s3Client, command, { expiresIn: 43200 });
+                    emp.avatar_url = await getSignedUrl(getS3Client(), command, { expiresIn: 43200 });
                 } else {
                     emp.avatar_url = null;
                 }
@@ -114,7 +114,7 @@ export const handler = async (event) => {
                 for (const emp of employees) {
                     if (emp.avatar_key) {
                         const command = new GetObjectCommand({ Bucket: BUCKET_NAME, Key: emp.avatar_key });
-                        emp.avatar_url = await getSignedUrl(s3Client, command, { expiresIn: 43200 });
+                        emp.avatar_url = await getSignedUrl(getS3Client(), command, { expiresIn: 43200 });
                     } else {
                         emp.avatar_url = null;
                     }
@@ -139,7 +139,7 @@ export const handler = async (event) => {
             for (const emp of employees) {
                 if (emp.avatar_key) {
                     const command = new GetObjectCommand({ Bucket: BUCKET_NAME, Key: emp.avatar_key });
-                    emp.avatar_url = await getSignedUrl(s3Client, command, { expiresIn: 43200 });
+                    emp.avatar_url = await getSignedUrl(getS3Client(), command, { expiresIn: 43200 });
                 } else {
                     emp.avatar_url = null;
                 }
