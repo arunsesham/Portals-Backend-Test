@@ -131,9 +131,9 @@ export const handler = async (event) => {
                     sort_order = COALESCE($3, sort_order),
                     is_active = COALESCE($4, is_active),
                     updated_at = $5
-                WHERE id = $6 AND tenant_id = $7
+                WHERE id = $6
                 `,
-                [value, label, sortOrder, is_active, updated_at, idParam, tenantId]
+                [value, label, sortOrder, is_active, updated_at, idParam]
             );
 
             return createResponse(200, { message: 'Dropdown option updated' });
@@ -151,9 +151,9 @@ export const handler = async (event) => {
                 UPDATE dropdown_options
                 SET is_active = FALSE,
                     updated_at = $2
-                WHERE id = $1 AND tenant_id = $3
+                WHERE id = $1
                 `,
-                [idParam, updated_at, tenantId]
+                [idParam, updated_at]
             );
 
             return createResponse(200, { message: 'Dropdown option deleted' });
