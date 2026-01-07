@@ -45,7 +45,7 @@ export const handler = async (event) => {
                     WHERE status <> 'Pending' AND manager_id = $1 AND tenant_id = $2
                     UNION ALL
                     SELECT 
-                        id, employee_id, start_date, end_date, type, status, 'compoff' AS source, reason, NULL as total_days, created_at
+                        id, employee_id, start_date, end_date, type, status, 'compoff' AS source, reason, total_days, created_at
                     FROM attendance
                     WHERE status <> 'Pending' AND type = 'compoff' AND manager_id = $1 AND tenant_id = $2
                     UNION ALL
@@ -143,7 +143,7 @@ export const handler = async (event) => {
                     status,
                     'compoff' AS source,
                     reason,
-                    NULL AS total_days,
+                    total_days,
                     created_at
                 FROM attendance
                 WHERE status = 'Pending'
@@ -183,54 +183,136 @@ export const handler = async (event) => {
 
             if (source === 'compoff') {
                 // --- CASE A: Manager approves weekend work to EARN a comp-off ---
-                const attRes = await client.query('SELECT employee_id, date FROM attendance WHERE id = $1 AND tenant_id = $2', [id, tenantId]);
+                const attRes = await client.query('SELECT employee_id, date, start_date, end_date, total_days FROM attendance WHERE id = $1 AND tenant_id = $2', [id, tenantId]);
                 if (attRes.rows.length === 0) throw new Error("Attendance record not found");
-                const { employee_id, date } = attRes.rows[0];
+                const { employee_id, date, start_date, end_date } = attRes.rows[0];
+                let { total_days } = attRes.rows[0];
 
                 if (status === 'Approved') {
-                    const earned = new Date(date);
-                    // Valid from: 1st of next month
-                    const validFrom = new Date(earned.getFullYear(), earned.getMonth() + 1, 1);
-                    // Expiry: Last day of 3rd month after earning (e.g., Earned Jan -> Valid Feb, Mar, Apr -> Expires Apr 30)
-                    const expiry = new Date(earned.getFullYear(), earned.getMonth() + 4, 0);
+                    // Logic to handle multiple days credit
+                    // If start_date/end_date exist, iterate. If not, use 'date' (single day)
+                    // Or simplified: Just loop 'total_days' times if we don't care about specific earned_date for each unit?
+                    // Better: If range exists, iterate dates. If single date, just 1.
 
-                    const newEntry = {
-                        comp_id: crypto.randomUUID(),
-                        earned_date: date,
-                        valid_from: validFrom.toISOString().split('T')[0],
-                        expiry_date: expiry.toISOString().split('T')[0],
-                        status: 'available',
-                        leave_id: null
-                    };
+                    const newEntries = [];
 
-                    await client.query(
-                        `UPDATE employees SET comp_off = COALESCE(comp_off, '[]'::jsonb) || $1::jsonb WHERE employee_id = $2`,
-                        [JSON.stringify([newEntry]), employee_id]
-                    );
-                }
-                let { leave_balance, comp_off } = empData.rows[0];
-                comp_off = comp_off || [];
+                    if (start_date && end_date) {
+                        const start = new Date(start_date);
+                        const end = new Date(end_date);
+                        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                            // Assuming we credit for every day in range (weekend/holidays logic handled during application?)
+                            // Current user phrasing implies "applied compoff for two days", so we credit 2 days.
+                            const earned = new Date(d);
+                            const validFrom = new Date(earned.getFullYear(), earned.getMonth() + 1, 1);
+                            const expiry = new Date(earned.getFullYear(), earned.getMonth() + 4, 0);
 
-                // Find if a specific comp-off was reserved for this leave
-                const linkedComp = comp_off.find(c => c.leave_id === id);
-
-                if (status === 'Approved') {
-                    if (linkedComp) linkedComp.status = 'used';
-                } else if (status === 'Rejected' || status === 'Revoked') {
-                    if (linkedComp) {
-                        // Reflect back: restore this specific comp-off to available
-                        linkedComp.status = 'available';
-                        linkedComp.leave_id = null;
+                            newEntries.push({
+                                comp_id: crypto.randomUUID(),
+                                earned_date: d.toISOString().split('T')[0],
+                                valid_from: validFrom.toISOString().split('T')[0],
+                                expiry_date: expiry.toISOString().split('T')[0],
+                                status: 'available',
+                                leave_id: null
+                            });
+                        }
                     } else {
-                        // Restore standard leave balance
-                        leave_balance = (leave_balance || 0) + 1;
+                        // Fallback Single Day
+                        const earned = new Date(date);
+                        const validFrom = new Date(earned.getFullYear(), earned.getMonth() + 1, 1);
+                        const expiry = new Date(earned.getFullYear(), earned.getMonth() + 4, 0);
+
+                        // If total_days > 1 but no range (unlikely but safe fallback), loop?
+                        // Assuming single date record = 1 day.
+                        newEntries.push({
+                            comp_id: crypto.randomUUID(),
+                            earned_date: date, // already string usually or Date object
+                            valid_from: validFrom.toISOString().split('T')[0],
+                            expiry_date: expiry.toISOString().split('T')[0],
+                            status: 'available',
+                            leave_id: null
+                        });
+                    }
+
+                    if (newEntries.length > 0) {
+                        await client.query(
+                            `UPDATE employees SET comp_off = COALESCE(comp_off, '[]'::jsonb) || $1::jsonb WHERE employee_id = $2`,
+                            [JSON.stringify(newEntries), employee_id]
+                        );
                     }
                 }
 
-                await client.query(
-                    'UPDATE employees SET leave_balance = $1, comp_off = $2 WHERE employee_id = $3 AND tenant_id = $4',
-                    [leave_balance, JSON.stringify(comp_off), employeeId, tenantId]
-                );
+                // Update Attendance Status (Compoff Request)
+                let dateField = status === 'Approved' ? 'approved_on' : (status === 'Rejected' ? 'rejected_on' : null);
+                let dateValue = dateField ? new Date().toISOString().split('T')[0] : null;
+
+                if (dateField) {
+                    await client.query(
+                        `UPDATE attendance SET status = $1, manager_reason = $2, updated_at = $3, ${dateField} = $6 WHERE id = $4 AND tenant_id = $5`,
+                        [status, manager_notes, updated_at, id, tenantId, dateValue]
+                    );
+                } else {
+                    await client.query(
+                        'UPDATE attendance SET status = $1, manager_reason = $2, updated_at = $3 WHERE id = $4 AND tenant_id = $5',
+                        [status, manager_notes, updated_at, id, tenantId]
+                    );
+                }
+
+            } else if (source === 'leave') {
+                // --- CASE B: Manager approves/rejects a LEAVE request ---
+                const leaveRes = await client.query('SELECT employee_id, total_days FROM leaves WHERE id = $1 AND tenant_id = $2', [id, tenantId]);
+                if (leaveRes.rows.length === 0) throw new Error("Leave record not found");
+                const { employee_id, total_days } = leaveRes.rows[0];
+
+                // Fetch Employee Data for logic
+                const empData = await client.query('SELECT leave_balance, comp_off FROM employees WHERE employee_id = $1', [employee_id]);
+                let { leave_balance, comp_off } = empData.rows[0];
+                comp_off = comp_off || [];
+
+                // Logic: If Rejected/Revoked, we must REFUND the balance AND restore any linked comp-offs
+                // Since application logic is greedy (mix of comp-offs + balance), restoration logic must be mirrored.
+                if (status === 'Rejected' || status === 'Revoked') {
+                    // 1. Find ALL comp-offs reserved for this leave
+                    const linkedComps = comp_off.filter(c => c.leave_id === id);
+
+                    // 2. Restore them to available
+                    linkedComps.forEach(c => {
+                        c.status = 'available';
+                        c.leave_id = null;
+                    });
+
+                    // 3. Refund the specific balance deducted
+                    // Deducted Balance = Total Days - (Days Covered by CompOffs)
+                    const daysCoveredByCompOff = linkedComps.length;
+                    const daysDeductedFromBalance = (total_days || 0) - daysCoveredByCompOff;
+
+                    if (daysDeductedFromBalance > 0) {
+                        leave_balance = (leave_balance || 0) + daysDeductedFromBalance;
+                    }
+
+                    await client.query(
+                        'UPDATE employees SET leave_balance = $1, comp_off = $2 WHERE employee_id = $3 AND tenant_id = $4',
+                        [leave_balance, JSON.stringify(comp_off), employee_id, tenantId]
+                    );
+                }
+                else if (status === 'Approved') {
+                    // If Approved, mark ALL linked comp-offs as 'used' forever
+                    let compOffUpdated = false;
+                    comp_off.forEach(c => {
+                        if (c.leave_id === id) {
+                            c.status = 'used';
+                            compOffUpdated = true;
+                        }
+                    });
+
+                    if (compOffUpdated) {
+                        await client.query(
+                            'UPDATE employees SET comp_off = $1 WHERE employee_id = $2 AND tenant_id = $3',
+                            [JSON.stringify(comp_off), employee_id, tenantId]
+                        );
+                    }
+                }
+
+                // Update Leave Status
                 let dateField = status === 'Approved' ? 'approved_on' : (status === 'Rejected' ? 'rejected_on' : null);
                 let dateValue = dateField ? new Date().toISOString().split('T')[0] : null;
 
@@ -245,6 +327,7 @@ export const handler = async (event) => {
                         [status, manager_notes, id, updated_at, tenantId]
                     );
                 }
+
             } else if (source === 'attendance') {
                 // --- CASE C: Manager approves/rejects a GENERAL ATTENDANCE regularization request ---
                 let dateField = status === 'Approved' ? 'approved_on' : (status === 'Rejected' ? 'rejected_on' : null);

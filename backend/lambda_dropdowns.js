@@ -15,8 +15,11 @@ export const handler = async (event) => {
     const method = event.httpMethod;
     const tenantId = '79c00000-0000-0000-0000-000000000001';
 
-    const keyParam = event.pathParameters?.key;
-    const idParam = event.pathParameters?.id;
+    // In API Gateway, we can only have one path parameter at this level (e.g., /dropdowns/{id}).
+    // We will use 'id' as the generic parameter name.
+    // For GET: id = category key (e.g. 'departments')
+    // For PUT/DELETE: id = option UUID
+    const pathParam = event.pathParameters?.id || event.pathParameters?.key;
 
     if (!tenantId) {
         return createResponse(400, { message: 'Tenant ID missing' });
@@ -26,7 +29,7 @@ export const handler = async (event) => {
         client = await pool.connect();
 
         if (method === 'GET') {
-            if (keyParam) {
+            if (pathParam) {
                 // GET /dropdowns/:key
                 const result = await client.query(
                     `
@@ -39,7 +42,7 @@ export const handler = async (event) => {
                       AND o.is_active = TRUE
                     ORDER BY o.sort_order
                     `,
-                    [keyParam, tenantId]
+                    [pathParam, tenantId]
                 );
 
                 return createResponse(200, result.rows);
@@ -116,7 +119,7 @@ export const handler = async (event) => {
 
         // PUT /dropdowns/:id
         if (method === 'PUT') {
-            if (!idParam) {
+            if (!pathParam) {
                 return createResponse(400, { message: 'Option ID missing' });
             }
 
@@ -133,7 +136,7 @@ export const handler = async (event) => {
                     updated_at = $5
                 WHERE id = $6
                 `,
-                [value, label, sortOrder, is_active, updated_at, idParam]
+                [value, label, sortOrder, is_active, updated_at, pathParam]
             );
 
             return createResponse(200, { message: 'Dropdown option updated' });
@@ -141,7 +144,7 @@ export const handler = async (event) => {
 
         // DELETE /dropdowns/:id (soft delete)
         if (method === 'DELETE') {
-            if (!idParam) {
+            if (!pathParam) {
                 return createResponse(400, { message: 'Option ID missing' });
             }
             const { updated_at } = body;
@@ -153,7 +156,7 @@ export const handler = async (event) => {
                     updated_at = $2
                 WHERE id = $1
                 `,
-                [idParam, updated_at]
+                [pathParam, updated_at]
             );
 
             return createResponse(200, { message: 'Dropdown option deleted' });

@@ -44,20 +44,33 @@ export const handler = async (event) => {
                 }
             }
 
-            // Find an available Comp-Off that is valid for this leave's start_date
+            // Find available Comp-Offs that are valid for this leave's start_date
             // Rule: valid_from <= leave_date <= expiry_date
-            let availableComp = comp_off.find(c =>
+            // GREEDY ALLOCATION: Use as many comp-offs as possible (up to total_days)
+
+            // 1. Identify valid candidates
+            const validCandidates = comp_off.filter(c =>
                 c.status === 'available' &&
                 start_date >= c.valid_from &&
                 start_date <= c.expiry_date
             );
 
-            if (availableComp) {
-                // Reservation: Mark it pending and link this Leave ID
-                availableComp.status = 'pending';
-                availableComp.leave_id = id;
-            } else {
-                leaves_remaining = (leaves_remaining || 0) - total_days;
+            // 2. Sort by expiry date (use earliest expiring first)
+            validCandidates.sort((a, b) => new Date(a.expiry_date) - new Date(b.expiry_date));
+
+            // 3. Allocate
+            let daysCoveredByCompOff = 0;
+            for (let i = 0; i < validCandidates.length && daysCoveredByCompOff < total_days; i++) {
+                const comp = validCandidates[i];
+                comp.status = 'pending';
+                comp.leave_id = id;
+                daysCoveredByCompOff++;
+            }
+
+            // 4. Deduct remaining from balance
+            const remainingToDeduct = total_days - daysCoveredByCompOff;
+            if (remainingToDeduct > 0) {
+                leaves_remaining = (leaves_remaining || 0) - remainingToDeduct;
             }
 
             await client.query('UPDATE employees SET leaves_remaining = $1, comp_off = $2 WHERE employee_id = $3 AND tenant_id = $4',
@@ -73,7 +86,7 @@ export const handler = async (event) => {
             return createResponse(201, res.rows[0]);
         }
         if (httpMethod === 'GET' && empId && status) {
-            const res = await client.query('SELECT * FROM leaves WHERE employee_id = $1 and status = $2 AND tenant_id = $3', [empId, status, tenantId]);
+            const res = await client.query('SELECT id,total_days FROM leaves WHERE employee_id = $1 and status = $2 AND tenant_id = $3', [empId, status, tenantId]);
             return createResponse(200, res.rows);
         }
 
