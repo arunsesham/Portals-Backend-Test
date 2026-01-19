@@ -24,6 +24,7 @@ CREATE TABLE public.attendance (
 	start_date varchar(50) NULL,
 	end_date varchar(50) NULL,
 	total_days int4 NULL,
+	total_hours numeric(5,2) NULL,
 	"type" varchar(50) NULL,
 	reason text NULL,
 	manager_reason text NULL,
@@ -139,5 +140,24 @@ CREATE TABLE public.policies (
 	is_active bool DEFAULT true NULL,
 	created_by varchar(50) NULL,
 	description text NULL,
+	current_version_id varchar(50) NULL,
 	CONSTRAINT policies_pk PRIMARY KEY (policy_id)
+);
+
+CREATE TABLE public.policy_versions (
+    version_id uuid PRIMARY KEY,
+    policy_id varchar(50) NOT NULL,
+    version_number int NOT NULL,
+    s3_bucket varchar(100) NOT NULL,
+    s3_key text NOT NULL,
+    checksum varchar(64) NULL,
+    change_summary text NULL,
+    created_at timestamptz DEFAULT now(),
+    created_by varchar(50) NOT NULL,
+    is_active bool DEFAULT true,
+    status varchar(20) DEFAULT 'DRAFT',
+    metadata jsonb NULL,
+    CONSTRAINT fk_policy
+        FOREIGN KEY (policy_id)
+        REFERENCES public.policies(policy_id)
 );

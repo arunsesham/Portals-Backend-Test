@@ -35,14 +35,25 @@ Support system records.
 | GET | `/employees` | `lambda_employees.js` | Fetch all or specific employee profile. |
 | POST | `/employees` | `lambda_employees.js` | Add a new employee to the system. |
 | PUT | `/employees/{id}` | `lambda_employees.js` | Update full profile of an employee. |
-| POST | `/attendance` | `lambda_attendance.js` | Record check-in/out (Validates duplicates). |
-| GET | `/attendance/{id}` | `lambda_attendance.js` | Fetch attendance history. |
+| POST | `/attendance` | `lambda_attendance.js` | **Punch In**: Record check-in time. <br> **Payload**: `{ "check_in": "ISO_DATE", ... }` |
+| PUT | `/attendance` | `lambda_attendance.js` | **Punch Out**: Update check-out time for latest active record. <br> **Payload**: `{ "check_out": "ISO_DATE", "employee_id": 123 }` |
+| GET | `/attendance` | `lambda_attendance.js` | **Check Status**: `?latest=true` returns the most recent punch record. <br> **History**: `?employee_id=123` returns full history. |
 | POST | `/leaves` | `lambda_leaves.js` | Apply for leave (Validates against duplicates). |
 | GET | `/approvals/{managerId}`| `lambda_approvals.js` | Fetch requests for direct reports. |
 | PUT | `/approvals/{id}` | `lambda_approvals.js` | Approve or reject a request. |
 | POST | `/compoff/earn` | `lambda_compoff.js` | Log earned comp-off with 3-month expiry. |
 | GET | `/compoff/{id}` | `lambda_compoff.js` | Fetch available/used/expired comp-offs. |
 | POST | `/tickets` | `lambda_tickets.js` | Create a support ticket. |
+| GET | `/notifications` | `lambda_notifications.js` | Fetch recent notifications. <br> **Params**: `?email=user@example.com` |
+| PUT | `/notifications` | `lambda_notifications.js` | Mark notification as read. <br> **Payload**: `{ "id": "uuid" }` |
+| GET | `/policies` | `lambda_policies.js` | List all policies. |
+| POST | `/policies` | `lambda_policies.js` | Create a new policy. |
+| GET | `/policies/{id}` | `lambda_policies.js` | Get active/latest version of a policy. |
+| PUT | `/policies/{id}` | `lambda_policies.js` | Update policy details (name, desc, status). <br> **Payload**: `{ "policy_name": "...", "is_active": true }` |
+| GET | `/policies/{id}/versions` | `lambda_policies.js` | List version history of a policy. |
+| GET | `/policies/{id}/versions/{versionId}` | `lambda_policies.js` | **Preview Version**: Get details & doc URL for a specific version (Draft/Archived). |
+| POST | `/policies/{id}/versions` | `lambda_policies.js` | Create a new draft version. |
+| PATCH | `/policies/{id}/versions/{versionId}/status` | `lambda_policies.js` | Approve a draft version. |
 
 ---
 
