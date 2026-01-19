@@ -23,7 +23,7 @@ export const handler = async (event) => {
         }
 
         if (method === 'GET') {
-            const res = await client.query('SELECT * FROM announcements WHERE tenant_id = $1 AND is_active = TRUE ORDER BY created_at DESC', [tenantId]);
+            const res = await client.query(`SELECT * FROM announcements WHERE tenant_id = $1 and "type" <> 'Pages' ORDER BY created_at DESC`, [tenantId]);
             return createResponse(200, res.rows);
         }
 

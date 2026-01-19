@@ -1,5 +1,6 @@
 import pool from './db.js';
 import crypto from 'crypto';
+import { publishNotification } from './utils_sns.js';
 
 const createResponse = (statusCode, body) => ({
     statusCode,
@@ -179,6 +180,7 @@ export const handler = async (event) => {
         if (httpMethod === 'PUT') {
             console.log(JSON.parse(event.body));
             const { id, status, manager_notes, source, updated_at } = JSON.parse(event.body);
+            let notificationPayload = null;
             await client.query('BEGIN');
 
             if (source === 'compoff') {
@@ -257,15 +259,31 @@ export const handler = async (event) => {
                     );
                 }
 
+
+                // Prepare Notification Payload
+                if (['Approved', 'Rejected'].includes(status)) {
+                    notificationPayload = {
+                        eventType: status === 'Approved' ? 'COMPOFF_APPROVED' : 'COMPOFF_REJECTED',
+                        employeeId: employee_id,
+                        tenantId: tenantId,
+                        entityType: 'COMPOFF',
+                        entityId: id,
+                        title: `Comp-off Request ${status}`,
+                        message: `Your comp-off request for working on ${new Date(date).toLocaleDateString()} has been ${status.toLowerCase()}.`,
+                        icon: status === 'Approved' ? 'check-circle' : 'x-circle',
+                        priority: 'NORMAL'
+                    };
+                }
+
             } else if (source === 'leave') {
                 // --- CASE B: Manager approves/rejects a LEAVE request ---
-                const leaveRes = await client.query('SELECT employee_id, total_days FROM leaves WHERE id = $1 AND tenant_id = $2', [id, tenantId]);
+                const leaveRes = await client.query('SELECT employee_id, total_days, start_date, end_date, type FROM leaves WHERE id = $1 AND tenant_id = $2', [id, tenantId]);
                 if (leaveRes.rows.length === 0) throw new Error("Leave record not found");
-                const { employee_id, total_days } = leaveRes.rows[0];
+                const { employee_id, total_days, start_date, end_date, type } = leaveRes.rows[0];
 
                 // Fetch Employee Data for logic
-                const empData = await client.query('SELECT leave_balance, comp_off FROM employees WHERE employee_id = $1', [employee_id]);
-                let { leave_balance, comp_off } = empData.rows[0];
+                const empData = await client.query('SELECT leaves_remaining, comp_off FROM employees WHERE employee_id = $1', [employee_id]);
+                let { leaves_remaining, comp_off } = empData.rows[0];
                 comp_off = comp_off || [];
 
                 // Logic: If Rejected/Revoked, we must REFUND the balance AND restore any linked comp-offs
@@ -286,12 +304,12 @@ export const handler = async (event) => {
                     const daysDeductedFromBalance = (total_days || 0) - daysCoveredByCompOff;
 
                     if (daysDeductedFromBalance > 0) {
-                        leave_balance = (leave_balance || 0) + daysDeductedFromBalance;
+                        leaves_remaining = (leaves_remaining || 0) + daysDeductedFromBalance;
                     }
 
                     await client.query(
-                        'UPDATE employees SET leave_balance = $1, comp_off = $2 WHERE employee_id = $3 AND tenant_id = $4',
-                        [leave_balance, JSON.stringify(comp_off), employee_id, tenantId]
+                        'UPDATE employees SET leaves_remaining = $1, comp_off = $2 WHERE employee_id = $3 AND tenant_id = $4',
+                        [leaves_remaining, JSON.stringify(comp_off), employee_id, tenantId]
                     );
                 }
                 else if (status === 'Approved') {
@@ -328,8 +346,35 @@ export const handler = async (event) => {
                     );
                 }
 
+
+                // Prepare Notification Payload
+                if (['Approved', 'Rejected', 'Revoked'].includes(status)) {
+                    const sDate = new Date(start_date).toLocaleDateString();
+                    const eDate = new Date(end_date).toLocaleDateString();
+                    notificationPayload = {
+                        eventType: status === 'Approved' ? 'LEAVE_APPROVED' : (status === 'Revoked' ? 'LEAVE_REVOKED' : 'LEAVE_REJECTED'),
+                        employeeId: employee_id,
+                        tenantId: tenantId,
+                        entityType: 'LEAVE',
+                        entityId: id,
+                        title: `Leave Request ${status}`,
+                        message: `Your ${type} request from ${sDate} to ${eDate} has been ${status.toLowerCase()}.`,
+                        icon: status === 'Approved' ? 'check-circle' : 'x-circle',
+                        priority: 'NORMAL'
+                    };
+                }
+
             } else if (source === 'attendance') {
                 // --- CASE C: Manager approves/rejects a GENERAL ATTENDANCE regularization request ---
+                // Fetch attendance details for notification
+                const attRes = await client.query('SELECT employee_id, date FROM attendance WHERE id = $1 AND tenant_id = $2', [id, tenantId]);
+                let employee_id = null;
+                let date = null;
+                if (attRes.rows.length > 0) {
+                    employee_id = attRes.rows[0].employee_id;
+                    date = attRes.rows[0].date;
+                }
+
                 let dateField = status === 'Approved' ? 'approved_on' : (status === 'Rejected' ? 'rejected_on' : null);
                 let dateValue = dateField ? new Date().toISOString().split('T')[0] : null;
 
@@ -344,9 +389,38 @@ export const handler = async (event) => {
                         [status, manager_notes, updated_at, id, tenantId]
                     );
                 }
+
+                if (['Approved', 'Rejected'].includes(status) && employee_id) {
+                    notificationPayload = {
+                        eventType: status === 'Approved' ? 'ATTENDANCE_APPROVED' : 'ATTENDANCE_REJECTED',
+                        employeeId: employee_id,
+                        tenantId: tenantId,
+                        entityType: 'ATTENDANCE',
+                        entityId: id,
+                        title: `Attendance Regularization ${status}`,
+                        message: `Your attendance regularization request for ${new Date(date).toLocaleDateString()} has been ${status.toLowerCase()}.`,
+                        icon: status === 'Approved' ? 'check-circle' : 'x-circle',
+                        priority: 'NORMAL'
+                    };
+                }
             }
 
+
             await client.query('COMMIT');
+            console.log(notificationPayload);
+            console.log('Transaction committed successfully');
+            // --- SNS Notification Logic ---
+            if (notificationPayload) {
+                // Fire and forget (don't await strictly or catch independently to avoid blocking response? 
+                // Wait, if we want to ensure it sends or log error, awaiting is fine as it's typically fast.
+                // But we shouldn't fail the response if SNS fails, as DB is already committed.)
+                try {
+                    await publishNotification(notificationPayload);
+                } catch (e) {
+                    console.error("Failed to publish notification:", e);
+                }
+            }
+
             return createResponse(200, { message: "Action processed successfully." });
         }
 

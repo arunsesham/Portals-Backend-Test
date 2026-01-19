@@ -8,16 +8,16 @@ let s3Client;
 const getS3Client = () => {
     if (!s3Client) {
         s3Client = new S3Client({
-            region: process.env.AWS_REGION || "us-east-1",
+            region: process.env.AWS_REGION_PORTAL || "us-east-1",
             credentials: {
-                accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-                secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+                accessKeyId: process.env.AWS_ACCESS_KEY_ID_PORTAL,
+                secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY_PORTAL
             }
         });
     }
     return s3Client;
 };
-const BUCKET_NAME = process.env.AWS_S3_BUCKET || "portals-dev";
+const BUCKET_NAME = process.env.AWS_S3_BUCKET_PORTAL || "portals-dev";
 
 const createResponse = (statusCode, body) => ({
     statusCode,
@@ -48,7 +48,7 @@ export const handler = async (event) => {
 
                 const emp = res.rows[0];
                 if (emp.avatar_key) {
-                    const command = new GetObjectCommand({ Bucket: process.env.AWS_S3_BUCKET, Key: emp.avatar_key });
+                    const command = new GetObjectCommand({ Bucket: process.env.AWS_S3_BUCKET_PORTAL, Key: emp.avatar_key });
                     emp.avatar_url = await getSignedUrl(getS3Client(), command, { expiresIn: 43200 }); // 12 hours
                 } else {
                     emp.avatar_url = null;
@@ -152,7 +152,7 @@ export const handler = async (event) => {
             if (isAvatarAction && isUploadUrl && empId) {
                 const key = `employees/${tenantId}/${empId}/avatar.jpg`;
                 const command = new PutObjectCommand({
-                    Bucket: process.env.AWS_S3_BUCKET,
+                    Bucket: process.env.AWS_S3_BUCKET_PORTAL,
                     Key: key,
                     ContentType: 'image/jpeg'
                 });
@@ -242,7 +242,7 @@ export const handler = async (event) => {
                 const formattedDate = new Date().toISOString().split('T')[0];
 
                 // Delete from S3
-                const command = new DeleteObjectCommand({ Bucket: process.env.AWS_S3_BUCKET, Key: key });
+                const command = new DeleteObjectCommand({ Bucket: process.env.AWS_S3_BUCKET_PORTAL, Key: key });
                 await getS3Client().send(command);
 
                 // Set avatar_key to NULL in DB

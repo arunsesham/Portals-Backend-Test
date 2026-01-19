@@ -56,6 +56,7 @@ const lambdaBridge = async (handler, req, res) => {
 
 // Dashboard & Config
 app.get('/dashboard', (req, res) => lambdaBridge(dashboardHandler, req, res));
+app.get('/dashboard/attendance-summary', (req, res) => lambdaBridge(dashboardHandler, req, res));
 app.get('/config', (req, res) => lambdaBridge(configHandler, req, res));
 app.post('/config', (req, res) => lambdaBridge(configHandler, req, res));
 
@@ -67,8 +68,12 @@ app.delete('/announcements/:id', (req, res) => lambdaBridge(announcementsHandler
 
 app.get('/policies', (req, res) => lambdaBridge(policiesHandler, req, res));
 app.post('/policies', (req, res) => lambdaBridge(policiesHandler, req, res));
+app.get('/policies/:id', (req, res) => lambdaBridge(policiesHandler, req, res));
 app.put('/policies/:id', (req, res) => lambdaBridge(policiesHandler, req, res));
-app.delete('/policies/:id', (req, res) => lambdaBridge(policiesHandler, req, res));
+app.post('/policies/:id/versions', (req, res) => lambdaBridge(policiesHandler, req, res));
+app.get('/policies/:id/versions', (req, res) => lambdaBridge(policiesHandler, req, res));
+app.get('/policies/:id/versions/:versionId', (req, res) => lambdaBridge(policiesHandler, req, res));
+app.patch('/policies/:id/versions/:versionId/status', (req, res) => lambdaBridge(policiesHandler, req, res));
 
 // Holidays
 app.get('/holidays/:id', (req, res) => lambdaBridge(holidaysHandler, req, res));
